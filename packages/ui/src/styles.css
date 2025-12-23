@@ -139,7 +139,8 @@ code {
 
 /* Custom animations for Beadworks */
 @keyframes beadFloat {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
   }
   50% {
@@ -148,7 +149,8 @@ code {
 }
 
 @keyframes wirePulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.15;
   }
   50% {
@@ -157,7 +159,8 @@ code {
 }
 
 @keyframes glowPulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.4;
   }
   50% {

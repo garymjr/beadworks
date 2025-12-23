@@ -8,13 +8,13 @@ export interface Task {
   issue_type?: 'bug' | 'feature' | 'task' | 'epic' | 'chore'
   priority?: number
   assignee?: string
-  labels?: string[]
+  labels?: Array<string>
   estimate?: number
   acceptance?: string
   design?: string
   externalRef?: string
   parent?: string
-  deps?: string[]
+  deps?: Array<string>
   created_at?: string
   updated_at?: string
   closed_at?: string
@@ -28,13 +28,13 @@ export interface CreateTaskInput {
   type?: 'bug' | 'feature' | 'task' | 'epic' | 'chore'
   priority?: number
   assignee?: string
-  labels?: string[]
+  labels?: Array<string>
   estimate?: number
   acceptance?: string
   design?: string
   externalRef?: string
   parent?: string
-  deps?: string[]
+  deps?: Array<string>
 }
 
 export interface UpdateTaskInput {
@@ -44,9 +44,9 @@ export interface UpdateTaskInput {
   status?: string
   priority?: number
   assignee?: string
-  addLabels?: string[]
-  removeLabels?: string[]
-  setLabels?: string[]
+  addLabels?: Array<string>
+  removeLabels?: Array<string>
+  setLabels?: Array<string>
   estimate?: number
   acceptance?: string
   design?: string
@@ -59,7 +59,7 @@ export interface TaskFilters {
   type?: string
   assignee?: string
   priority?: string
-  labels?: string[]
+  labels?: Array<string>
   limit?: number
   sort?: string
   reverse?: boolean
@@ -95,16 +95,16 @@ export interface Stats {
 
 // Mapping between UI columns and BD statuses
 export const COLUMN_STATUS_MAP: Record<string, string> = {
-  'todo': 'open',
-  'blocked': 'blocked',
-  'ready': 'open',
+  todo: 'open',
+  blocked: 'blocked',
+  ready: 'open',
   'in-progress': 'in_progress',
-  'done': 'closed',
+  done: 'closed',
 } as const
 
 export const STATUS_COLUMN_MAP: Record<string, string> = {
-  'open': 'todo',
-  'blocked': 'blocked',
-  'in_progress': 'in-progress',
-  'closed': 'done',
+  open: 'todo',
+  blocked: 'blocked',
+  in_progress: 'in-progress',
+  closed: 'done',
 } as const

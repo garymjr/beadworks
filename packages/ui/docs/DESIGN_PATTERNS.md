@@ -17,19 +17,19 @@ Beadworks uses a **bead-as-task metaphor** where work items are represented as g
 
 ```css
 /* Backgrounds - Deep, atmospheric slate gradients */
---bg-primary: #020617;      /* slate-950 */
---bg-secondary: #0f172a;    /* slate-900 */
---bg-accent: #1e1b4b;       /* indigo-950 */
+--bg-primary: #020617; /* slate-950 */
+--bg-secondary: #0f172a; /* slate-900 */
+--bg-accent: #1e1b4b; /* indigo-950 */
 
 /* Bead Colors - Task-specific with priority meanings */
---bead-critical: #ff6b6b;   /* Coral red */
---bead-high: #ffd93d;       /* Warm yellow */
---bead-medium: #6bcb77;     /* Soft green */
---bead-low: #4d96ff;        /* Sky blue */
---bead-feature: #9b59b6;    /* Purple */
+--bead-critical: #ff6b6b; /* Coral red */
+--bead-high: #ffd93d; /* Warm yellow */
+--bead-medium: #6bcb77; /* Soft green */
+--bead-low: #4d96ff; /* Sky blue */
+--bead-feature: #9b59b6; /* Purple */
 
 /* UI Accents */
---accent-primary: #8b5cf6;  /* Violet */
+--accent-primary: #8b5cf6; /* Violet */
 --accent-glow: rgba(139, 92, 246, 0.3);
 --border-subtle: rgba(255, 255, 255, 0.05);
 --border-hover: rgba(255, 255, 255, 0.1);
@@ -42,16 +42,16 @@ Beadworks uses a **bead-as-task metaphor** where work items are represented as g
 font-family: 'Outfit', sans-serif;
 
 /* Headers & Titles */
---text-display: 700 24px/1 'Outfit';      /* Main heading */
---text-h1: 600 18px/1.2 'Outfit';          /* Column titles */
---text-card-title: 500 16px/1.3 'Outfit';  /* Task titles */
+--text-display: 700 24px/1 'Outfit'; /* Main heading */
+--text-h1: 600 18px/1.2 'Outfit'; /* Column titles */
+--text-card-title: 500 16px/1.3 'Outfit'; /* Task titles */
 
 /* Monospace Font: JetBrains Mono (Technical, precise) */
 font-family: 'JetBrains Mono', monospace;
 
 /* Code & Metadata */
---text-code: 400 12px/1.5 'JetBrains Mono';    /* Tags, IDs */
---text-meta: 400 11px/1.4 'JetBrains Mono';    /* Timestamps, stats */
+--text-code: 400 12px/1.5 'JetBrains Mono'; /* Tags, IDs */
+--text-meta: 400 11px/1.4 'JetBrains Mono'; /* Timestamps, stats */
 ```
 
 ### Glass Morphism
@@ -60,7 +60,7 @@ All cards use layered transparency for depth:
 
 ```css
 .glass-card {
-  background: rgba(15, 23, 42, 0.8);  /* slate-900 with opacity */
+  background: rgba(15, 23, 42, 0.8); /* slate-900 with opacity */
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
@@ -98,6 +98,7 @@ interface BeadProps {
 ```
 
 **Key styling:**
+
 - Gradient radial glow on bead indicator (light top-left, dark bottom-right)
 - Priority-based shadow glow on entire card
 - Scale transform on hover (1.02x)
@@ -130,6 +131,7 @@ interface WireTrackProps {
 ```
 
 **Key styling:**
+
 - Vertical gradient line through center (wire metaphor)
 - Dashed connector to header wire
 - Border highlight when drag-over (violet-500/50)
@@ -147,8 +149,13 @@ Visual metaphors linking columns to a central "abacus frame":
 }
 
 @keyframes wirePulse {
-  0%, 100% { opacity: 0.15; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 ```
 
@@ -159,6 +166,7 @@ Visual metaphors linking columns to a central "abacus frame":
 ### Drag & Drop
 
 **States:**
+
 1. **Idle**: Card sits on wire, subtle shadow
 2. **Hover**: Card scales up (1.02x), glow intensifies
 3. **Drag Start**: Card shrinks (0.95x), opacity drops (0.5)
@@ -260,11 +268,21 @@ Staggered fade-in with cascade effect:
   }
 }
 
-.column-1 { animation: fadeInUp 0.5s ease-out 0.0s; }
-.column-2 { animation: fadeInUp 0.5s ease-out 0.1s; }
-.column-3 { animation: fadeInUp 0.5s ease-out 0.2s; }
-.column-4 { animation: fadeInUp 0.5s ease-out 0.3s; }
-.column-5 { animation: fadeInUp 0.5s ease-out 0.4s; }
+.column-1 {
+  animation: fadeInUp 0.5s ease-out 0s;
+}
+.column-2 {
+  animation: fadeInUp 0.5s ease-out 0.1s;
+}
+.column-3 {
+  animation: fadeInUp 0.5s ease-out 0.2s;
+}
+.column-4 {
+  animation: fadeInUp 0.5s ease-out 0.3s;
+}
+.column-5 {
+  animation: fadeInUp 0.5s ease-out 0.4s;
+}
 ```
 
 ### Ambient Background
@@ -273,8 +291,12 @@ Floating gradient orbs with pulse:
 
 ```html
 <div class="fixed inset-0 pointer-events-none">
-  <div class="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" />
-  <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+  <div
+    class="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"
+  />
+  <div
+    class="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000"
+  />
 </div>
 ```
 
@@ -299,18 +321,28 @@ Floating gradient orbs with pulse:
 
 ```css
 /* Desktop */
-.gap-6 { gap: 1.5rem; }
+.gap-6 {
+  gap: 1.5rem;
+}
 
 /* Tablet/Laptop */
 @media (max-width: 1400px) {
-  .gap-4 { gap: 1rem; }
-  .min-w-[280px] { min-width: 260px; }
+  .gap-4 {
+    gap: 1rem;
+  }
+  .min-w-[280px] {
+    min-width: 260px;
+  }
 }
 
 /* Mobile */
 @media (max-width: 768px) {
-  .columns { flex-direction: column; }
-  .min-w-[280px] { min-width: 100%; }
+  .columns {
+    flex-direction: column;
+  }
+  .min-w-[280px] {
+    min-width: 100%;
+  }
 }
 ```
 
@@ -360,8 +392,13 @@ Prefer CSS over JS for animations:
 ```css
 /* ✅ Good: CSS-only */
 @keyframes pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.8; }
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 
 .animate-pulse {
@@ -439,6 +476,7 @@ All theme values exposed as CSS variables for consistency:
 ### Creating New Components
 
 Follow these patterns:
+
 1. Use glass-card for containers
 2. Apply hover-scale for interactive elements
 3. Add pulse animation for status indicators
@@ -476,6 +514,7 @@ When adding new features, verify:
 ## Future Enhancements
 
 **Planned visual features:**
+
 - Bead physics simulation (momentum when dragging)
 - Particle trails on bead movement
 - Sound effects for bead collisions (optional)
@@ -484,6 +523,7 @@ When adding new features, verify:
 - User-customizable bead colors
 
 **Planned interactions:**
+
 - Multi-select with batch drag
 - Swipe gestures on mobile
 - Quick actions on right-click
