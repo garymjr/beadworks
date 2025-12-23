@@ -8,6 +8,58 @@ import type {
 
 const API_BASE = process.env.BD_API_URL || 'http://localhost:3001/api/bd'
 
+// ============================================================================
+// Server Functions for Project Management
+// ============================================================================
+
+/**
+ * Check if a project has a .beads database initialized
+ */
+export const checkProjectInitialized = createServerFn({
+  method: 'GET',
+})
+  .inputValidator((projectPath?: string) => projectPath)
+  .handler(async ({ data }) => {
+    if (!data) {
+      throw new Error('Project path is required')
+    }
+    const url = new URL(`${API_BASE}/check-initialized`, 'http://localhost')
+    url.searchParams.set('project_path', data)
+
+    const response = await fetch(url.toString())
+    if (!response.ok) {
+      throw new Error('Failed to check project status')
+    }
+
+    return response.json() as Promise<{ initialized: boolean; path: string }>
+  })
+
+/**
+ * Initialize a new beads database in a project directory
+ */
+export const initProject = createServerFn({
+  method: 'POST',
+})
+  .inputValidator((projectPath: string) => projectPath)
+  .handler(async ({ data }) => {
+    const url = new URL(`${API_BASE}/init`, 'http://localhost')
+
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_path: data }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        message: response.statusText,
+      }))
+      throw new Error(error.message || 'Failed to initialize project')
+    }
+
+    return response.json()
+  })
+
 // Helper function for API calls
 async function fetchFromAPI(
   endpoint: string,

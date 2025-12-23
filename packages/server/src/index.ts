@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { bdRoutes } from "./routes/bd.js";
+import { cwdRoutes } from "./routes/cwd.js";
 
 const app = new Hono();
 
@@ -31,6 +32,9 @@ app.get("/api/health", (c) => {
 
 // Mount bd routes
 app.route("/api/bd", bdRoutes);
+
+// Mount cwd routes
+app.route("/", cwdRoutes);
 
 // 404 handler
 app.notFound((c) => {

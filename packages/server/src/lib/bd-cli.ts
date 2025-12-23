@@ -2,6 +2,24 @@
  * Wrapper functions for executing bd CLI commands
  */
 
+import { existsSync } from "fs";
+import { join } from "path";
+
+/**
+ * Check if a .beads directory exists at the given path
+ */
+export function isBeadsInitialized(projectPath: string): boolean {
+  const beadsDir = join(projectPath, ".beads");
+  return existsSync(beadsDir);
+}
+
+/**
+ * Initialize a new beads database in the project directory
+ */
+export async function initBeads(projectPath: string): Promise<any> {
+  return execBdCommand(["init"], projectPath);
+}
+
 /**
  * Execute a bd command and return the parsed JSON output
  */

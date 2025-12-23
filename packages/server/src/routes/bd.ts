@@ -5,6 +5,46 @@ import * as bd from "../lib/bd-cli.js";
 
 const bdRoutes = new Hono();
 
+// ============================================================================
+// Project Management
+// ============================================================================
+
+/**
+ * GET /api/bd/check-initialized
+ * Check if a project has a .beads database
+ */
+bdRoutes.get("/check-initialized", async (c) => {
+  const projectPath = c.req.query("project_path");
+  if (!projectPath) {
+    return c.json({ error: "project_path query parameter is required" }, 400);
+  }
+
+  const isInitialized = bd.isBeadsInitialized(projectPath);
+  return c.json({ initialized: isInitialized, path: projectPath });
+});
+
+/**
+ * POST /api/bd/init
+ * Initialize a new beads database in a project directory
+ */
+const initSchema = z.object({
+  project_path: z.string(),
+});
+
+bdRoutes.post("/init", zValidator("json", initSchema), async (c) => {
+  const { project_path } = c.req.valid("json");
+  try {
+    const result = await bd.initBeads(project_path);
+    return c.json({ success: true, ...result });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 400);
+  }
+});
+
+// ============================================================================
+// Issues
+// ============================================================================
+
 // Helper to get database path from request
 function getDbPath(c: any): string | undefined {
   // Check for project_path query parameter

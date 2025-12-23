@@ -1,6 +1,12 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
-import { getTasks, updateTaskStatus } from '../lib/api/server-fns'
+import { useQuery } from '@tanstack/react-query'
+import {
+  getTasks,
+  updateTaskStatus,
+  checkProjectInitialized,
+  initProject,
+} from '../lib/api/server-fns'
 import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
 import { ProjectSelector } from '../components/ProjectSelector'
 import { AddProjectModal } from '../components/AddProjectModal'
@@ -76,29 +82,29 @@ export const Route = createFileRoute('/')({
     projectPath:
       typeof search.projectPath === 'string' ? search.projectPath : undefined,
   }),
-  loader: async ({ search }) => {
-    // Only load tasks if a project is selected
-    const projectPath = search?.projectPath
-    if (!projectPath) {
-      return { tasks: [], error: null }
-    }
-
-    try {
-      const tasks = await getTasks({ data: projectPath })
-      return { tasks, error: null }
-    } catch (error) {
-      console.error('Failed to load tasks:', error)
-      return {
-        tasks: [],
-        error: error instanceof Error ? error.message : 'Failed to load tasks',
-      }
-    }
-  },
 })
 
 function BeadworksKanban() {
   const router = useRouter()
-  const { tasks: initialTasks, error } = Route.useLoaderData()
+  const search = Route.useSearch()
+
+  // Fetch tasks directly - skip init check for now
+  const {
+    data: tasks = [],
+    error,
+    isLoading,
+  } = useQuery({
+    queryKey: ['tasks', search.projectPath],
+    queryFn: () => getTasks(search.projectPath || ''),
+    enabled: !!search.projectPath,
+  })
+
+  console.log('Render state:', {
+    projectPath: search.projectPath,
+    tasksCount: tasks.length,
+    isLoading,
+    error,
+  })
 
   const [columns, setColumns] = useState<Array<Column>>([
     { id: 'todo', title: 'Todo', tasks: [] },
@@ -112,28 +118,26 @@ function BeadworksKanban() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
   const [isUpdating, setIsUpdating] = useState<string | null>(null)
   const [showAddProjectModal, setShowAddProjectModal] = useState(false)
+  const [isInitializing, setIsInitializing] = useState(false)
+  const [initError, setInitError] = useState<string | null>(null)
 
   // Track current project - initialize safely for SSR
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
 
-  // Load current project from localStorage on mount
+  // Load current project from localStorage on mount and sync URL
   useEffect(() => {
     const project = getCurrentProject()
     setCurrentProject(project)
 
-    // Sync URL with current project
-    if (project?.path) {
-      const url = new URL(window.location.href)
-      if (!url.searchParams.get('projectPath')) {
-        url.searchParams.set('projectPath', project.path)
-        window.history.replaceState({}, '', url.toString())
-      }
-    } else {
-      // Clear projectPath from URL if no project selected
-      const url = new URL(window.location.href)
-      url.searchParams.delete('projectPath')
-      window.history.replaceState({}, '', url.toString())
+    // Sync URL with current project if not already set
+    if (project?.path && !search.projectPath) {
+      router.navigate({
+        to: '/',
+        search: { projectPath: project.path },
+      })
     }
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Handle project changes - update URL and refetch
@@ -141,18 +145,11 @@ function BeadworksKanban() {
     (project: Project | null) => {
       setCurrentProject(project)
 
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href)
-        if (project?.path) {
-          url.searchParams.set('projectPath', project.path)
-        } else {
-          url.searchParams.delete('projectPath')
-        }
-        window.history.replaceState({}, '', url.toString())
-
-        // Refetch with new project path
-        router.invalidate()
-      }
+      // Use router navigate to update search params and trigger loader
+      router.navigate({
+        to: '/',
+        search: project?.path ? { projectPath: project.path } : {},
+      })
     },
     [router],
   )
@@ -162,12 +159,11 @@ function BeadworksKanban() {
     (project: Project) => {
       setCurrentProject(project)
 
-      if (typeof window !== 'undefined' && project?.path) {
-        const url = new URL(window.location.href)
-        url.searchParams.set('projectPath', project.path)
-        window.history.replaceState({}, '', url.toString())
-        router.invalidate()
-      }
+      // Use router navigate to update search params and trigger loader
+      router.navigate({
+        to: '/',
+        search: { projectPath: project.path },
+      })
     },
     [router],
   )
@@ -177,7 +173,7 @@ function BeadworksKanban() {
     setColumns((prev) => {
       const newCols = prev.map((col) => ({ ...col, tasks: [] }))
 
-      initialTasks.forEach((task) => {
+      tasks.forEach((task) => {
         const columnId = STATUS_COLUMN_MAP[task.status] || 'todo'
         const colIndex = newCols.findIndex((c) => c.id === columnId)
         if (colIndex !== -1) {
@@ -187,7 +183,7 @@ function BeadworksKanban() {
 
       return newCols
     })
-  }, [initialTasks])
+  }, [tasks])
 
   const handleDragStart = (task: Task) => {
     setDraggedTask(task)
@@ -269,6 +265,248 @@ function BeadworksKanban() {
       default:
         return ''
     }
+  }
+
+  const handleInitProject = async () => {
+    if (!currentProject?.path) return
+
+    setIsInitializing(true)
+    setInitError(null)
+
+    try {
+      await initProject(currentProject.path)
+      // Reload the page to fetch tasks
+      router.invalidate()
+    } catch (error) {
+      setInitError(
+        error instanceof Error ? error.message : 'Failed to initialize project',
+      )
+    } finally {
+      setIsInitializing(false)
+    }
+  }
+
+  // Show "no project selected" state
+  if (!currentProject) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 overflow-hidden">
+        {/* Animated background */}
+        <div className="fixed inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),transparent)]" />
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+        </div>
+
+        {/* Header */}
+        <header className="relative z-10 border-b border-white/5 backdrop-blur-sm">
+          <div className="max-w-[1800px] mx-auto px-6 py-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <circle cx="12" cy="12" r="3" strokeWidth="2" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div>
+                  <h1
+                    className="text-2xl font-bold text-white tracking-tight"
+                    style={{ fontFamily: 'Outfit, sans-serif' }}
+                  >
+                    Beadworks
+                  </h1>
+                  <p className="text-sm text-slate-400">
+                    {currentProject?.name || 'Select a project'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <ProjectSelector
+                  onProjectChange={handleProjectChange}
+                  onAddProjectClick={() => setShowAddProjectModal(true)}
+                />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Needs Init State */}
+        <main className="relative z-10 flex items-center justify-center min-h-[calc(100vh-88px)]">
+          <div className="text-center max-w-lg mx-auto px-6">
+            {/* Bead illustration */}
+            <div className="mb-8 flex justify-center gap-3">
+              <div
+                className="w-16 h-16 rounded-full"
+                style={{
+                  background:
+                    'radial-gradient(circle at 30% 30%, #ff6b6bdd, #ff6b6b88)',
+                  boxShadow:
+                    '0 8px 32px #ff6b6b40, inset 0 1px 0 rgba(255,255,255,0.3)',
+                }}
+              />
+              <div
+                className="w-16 h-16 rounded-full animate-pulse"
+                style={{
+                  background:
+                    'radial-gradient(circle at 30% 30%, #ffd93ddd, #ffd93d88)',
+                  boxShadow:
+                    '0 8px 32px #ffd93d40, inset 0 1px 0 rgba(255,255,255,0.3)',
+                }}
+              />
+              <div
+                className="w-16 h-16 rounded-full"
+                style={{
+                  background:
+                    'radial-gradient(circle at 30% 30%, #6bcb77dd, #6bcb7788)',
+                  boxShadow:
+                    '0 8px 32px #6bcb7740, inset 0 1px 0 rgba(255,255,255,0.3)',
+                }}
+              />
+            </div>
+
+            <h2
+              className="text-3xl font-bold text-white mb-4"
+              style={{ fontFamily: 'Outfit, sans-serif' }}
+            >
+              Project Not Initialized
+            </h2>
+            <p className="text-lg text-slate-400 mb-8 leading-relaxed">
+              This project doesn't have a <code className="text-violet-400">.beads</code> database yet.
+              Initialize it to start tracking tasks and issues.
+            </p>
+
+            {/* Info Box */}
+            <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-left mb-6">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
+                  <svg
+                    className="w-5 h-5 text-violet-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h3
+                    className="text-sm font-semibold text-white mb-1"
+                    style={{ fontFamily: 'Outfit, sans-serif' }}
+                  >
+                    What happens when you initialize?
+                  </h3>
+                  <p className="text-sm text-slate-400 leading-relaxed">
+                    A <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">.beads</code> folder
+                    will be created in <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">{currentProject?.path || 'your project directory'}</code>{' '}
+                    with a local database to track your issues.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Error message */}
+            {initError && (
+              <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-left">
+                <p className="text-sm text-red-400">{initError}</p>
+              </div>
+            )}
+
+            {/* Initialize Button */}
+            <button
+              onClick={handleInitProject}
+              disabled={isInitializing}
+              className="px-8 py-4 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white font-semibold hover:shadow-lg hover:shadow-violet-500/25 transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              style={{ fontFamily: 'Outfit, sans-serif' }}
+            >
+              {isInitializing ? (
+                <span className="flex items-center gap-3">
+                  <svg
+                    className="w-5 h-5 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Initializing...
+                </span>
+              ) : (
+                'Initialize Project'
+              )}
+            </button>
+
+            <p className="text-sm text-slate-500 mt-6">
+              Or run <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">bd init</code> in your terminal
+            </p>
+          </div>
+        </main>
+
+        {/* Footer */}
+        <footer className="fixed bottom-0 left-0 right-0 z-20 border-t border-white/5 bg-slate-950/80 backdrop-blur-sm">
+          <div className="max-w-[1800px] mx-auto px-6 py-3">
+            <div
+              className="flex items-center justify-between text-xs"
+              style={{ fontFamily: 'JetBrains Mono, monospace' }}
+            >
+              <div className="flex items-center gap-6">
+                <span className="text-slate-500">
+                  <span className="text-amber-400">●</span> Needs Initialization
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-500">
+                <span>Press</span>
+                <kbd className="px-2 py-1 rounded bg-white/5 text-slate-400">
+                  ?
+                </kbd>
+                <span>for keyboard shortcuts</span>
+              </div>
+            </div>
+          </div>
+        </footer>
+
+        {/* Add Project Modal */}
+        <AddProjectModal
+          isOpen={showAddProjectModal}
+          onClose={() => setShowAddProjectModal(false)}
+          onProjectAdded={handleProjectAdded}
+        />
+
+        {/* Custom font imports */}
+        <style>
+          @import
+          url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        </style>
+      </div>
+    )
   }
 
   // Show "no project selected" state

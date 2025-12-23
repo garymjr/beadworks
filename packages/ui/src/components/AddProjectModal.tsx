@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { DirectoryPicker } from './DirectoryPicker'
 import {
   addProject,
   getCurrentProject,
@@ -21,7 +22,6 @@ export function AddProjectModal({
 }: AddProjectModalProps) {
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectPath, setNewProjectPath] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -45,43 +45,6 @@ export function AddProjectModal({
     // Switch to the new project
     setCurrentProjectId(newProject.id)
     onProjectAdded?.(newProject)
-  }
-
-  function handleFilePicker() {
-    fileInputRef.current?.click()
-  }
-
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      // Check if any file is a .beads database or in a .beads directory
-      const file = files[0]
-      const path = file.webkitRelativePath || file.name
-
-      // Extract the parent directory if we selected a file inside .beads
-      if (path.includes('.beads')) {
-        const beadsIndex = path.indexOf('.beads')
-        const projectPath = path.substring(0, beadsIndex - 1)
-        setNewProjectPath(projectPath)
-
-        // Auto-generate a name from the path
-        const pathParts = projectPath.split('/')
-        const folderName =
-          pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2]
-        if (!newProjectName) {
-          setNewProjectName(folderName || 'New Project')
-        }
-      } else {
-        // Use the file's directory
-        const pathParts = path.split('/')
-        pathParts.pop() // Remove filename
-        setNewProjectPath(pathParts.join('/'))
-
-        if (!newProjectName && pathParts.length > 0) {
-          setNewProjectName(pathParts[pathParts.length - 1] || 'New Project')
-        }
-      }
-    }
   }
 
   if (!isOpen) return null
@@ -146,55 +109,16 @@ export function AddProjectModal({
               Path to Project
             </label>
 
-            {/* File Picker */}
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={newProjectPath}
-                onChange={(e) => setNewProjectPath(e.target.value)}
-                placeholder="/path/to/project"
-                className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                style={{ fontFamily: 'JetBrains Mono, monospace' }}
-              />
-              <button
-                onClick={handleFilePicker}
-                className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
-                title="Browse for project directory"
-              >
-                <svg
-                  className="w-5 h-5 text-slate-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            {/* Hidden file input for directory picker */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              webkitdirectory=""
-              directory=""
-              multiple
-              onChange={handleFileSelect}
-              className="hidden"
+            <DirectoryPicker
+              value={newProjectPath}
+              onChange={setNewProjectPath}
+              onNameExtracted={(name) => {
+                if (!newProjectName) {
+                  setNewProjectName(name)
+                }
+              }}
+              placeholder="/Users/username/projects/my-project"
             />
-
-            <p className="text-xs text-slate-500 mt-2">
-              Select the directory containing your{' '}
-              <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">
-                .beads
-              </code>{' '}
-              folder
-            </p>
           </div>
 
           {/* Info Box */}
