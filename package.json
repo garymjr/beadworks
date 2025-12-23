@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "bun run --watch ./packages/server/src/index.ts",
     "dev:ui": "bun run --filter @beadworks/ui dev",
+    "dev:all": "concurrently \"bun run --watch ./packages/server/src/index.ts\" \"bun run --filter @beadworks/ui dev\" --names \"SERVER,UI\" --prefix-colors \"blue,green\"",
     "build": "bun run --filter @beadworks/ui build",
     "preview": "bun run --filter @beadworks/ui preview",
     "test": "bun run --filter @beadworks/ui test",
@@ -17,7 +18,8 @@
     "check": "bun run --filter @beadworks/ui check"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "prettier": "^3.5.3"
+    "concurrently": "^9.2.1",
+    "prettier": "^3.5.3",
+    "typescript": "^5.7.2"
   }
 }

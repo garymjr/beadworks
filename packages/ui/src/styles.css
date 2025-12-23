@@ -136,3 +136,43 @@ code {
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom animations for Beadworks */
+@keyframes beadFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes wirePulse {
+  0%, 100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes glowPulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-bead-float {
+  animation: beadFloat 3s ease-in-out infinite;
+}
+
+.animate-wire-pulse {
+  animation: wirePulse 2s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glowPulse 2s ease-in-out infinite;
+}
