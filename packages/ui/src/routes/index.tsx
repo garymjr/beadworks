@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { getTasks, updateTaskStatus } from '../lib/api/server-fns'
 import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
 import { ProjectSelector } from '../components/ProjectSelector'
-import { getCurrentProject } from '../lib/projects'
+import { AddProjectModal } from '../components/AddProjectModal'
+import { getCurrentProject, getProjects } from '../lib/projects'
 import type { Task } from '../lib/api/types'
 import type { Project } from '../lib/projects'
 
@@ -110,6 +111,7 @@ function BeadworksKanban() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
   const [isUpdating, setIsUpdating] = useState<string | null>(null)
+  const [showAddProjectModal, setShowAddProjectModal] = useState(false)
 
   // Track current project - initialize safely for SSR
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
@@ -149,6 +151,21 @@ function BeadworksKanban() {
         window.history.replaceState({}, '', url.toString())
 
         // Refetch with new project path
+        router.invalidate()
+      }
+    },
+    [router],
+  )
+
+  // Handle when a project is added via the modal
+  const handleProjectAdded = useCallback(
+    (project: Project) => {
+      setCurrentProject(project)
+
+      if (typeof window !== 'undefined' && project?.path) {
+        const url = new URL(window.location.href)
+        url.searchParams.set('projectPath', project.path)
+        window.history.replaceState({}, '', url.toString())
         router.invalidate()
       }
     },
@@ -302,7 +319,10 @@ function BeadworksKanban() {
               </div>
 
               <div className="flex items-center gap-3">
-                <ProjectSelector onProjectChange={handleProjectChange} />
+                <ProjectSelector
+                  onProjectChange={handleProjectChange}
+                  onAddProjectClick={() => setShowAddProjectModal(true)}
+                />
               </div>
             </div>
           </div>
@@ -419,6 +439,13 @@ function BeadworksKanban() {
           </div>
         </footer>
 
+        {/* Add Project Modal */}
+        <AddProjectModal
+          isOpen={showAddProjectModal}
+          onClose={() => setShowAddProjectModal(false)}
+          onProjectAdded={handleProjectAdded}
+        />
+
         {/* Custom font imports */}
         <style>
           @import
@@ -478,7 +505,10 @@ function BeadworksKanban() {
 
             <div className="flex items-center gap-3">
               {/* Project Selector */}
-              <ProjectSelector onProjectChange={handleProjectChange} />
+              <ProjectSelector
+                onProjectChange={handleProjectChange}
+                onAddProjectClick={() => setShowAddProjectModal(true)}
+              />
 
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
                 <div
@@ -551,11 +581,10 @@ function BeadworksKanban() {
 
                   {/* Bead track */}
                   <div
-                    className={`relative min-h-[500px] p-4 rounded-2xl border-2 transition-all duration-300 ${
-                      dragOverColumn === column.id
+                    className={`relative min-h-[500px] p-4 rounded-2xl border-2 transition-all duration-300 ${dragOverColumn === column.id
                         ? 'bg-white/5 border-violet-500/50 shadow-lg shadow-violet-500/10'
                         : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.03]'
-                    }`}
+                      }`}
                     onDragOver={(e) => handleDragOver(e, column.id)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, column.id)}
@@ -575,12 +604,11 @@ function BeadworksKanban() {
                             draggable
                             onDragStart={() => handleDragStart(task)}
                             onDragEnd={handleDragEnd}
-                            className={`group relative cursor-grab active:cursor-grabbing transition-all duration-300 ${
-                              draggedTask?.id === task.id ||
-                              isUpdating === task.id
+                            className={`group relative cursor-grab active:cursor-grabbing transition-all duration-300 ${draggedTask?.id === task.id ||
+                                isUpdating === task.id
                                 ? 'opacity-50 scale-95'
                                 : 'hover:scale-[1.02]'
-                            }`}
+                              }`}
                           >
                             {/* Glow effect */}
                             <div
@@ -644,13 +672,12 @@ function BeadworksKanban() {
                                 {/* Priority indicator */}
                                 <div className="flex items-center gap-2">
                                   <div
-                                    className={`w-2 h-2 rounded-full ${
-                                      priority === 'high'
+                                    className={`w-2 h-2 rounded-full ${priority === 'high'
                                         ? 'bg-red-400'
                                         : priority === 'medium'
                                           ? 'bg-yellow-400'
                                           : 'bg-emerald-400'
-                                    }`}
+                                      }`}
                                   />
                                   <span className="text-xs text-slate-500 capitalize">
                                     {priority} priority
@@ -731,6 +758,13 @@ function BeadworksKanban() {
           </div>
         </div>
       </footer>
+
+      {/* Add Project Modal */}
+      <AddProjectModal
+        isOpen={showAddProjectModal}
+        onClose={() => setShowAddProjectModal(false)}
+        onProjectAdded={handleProjectAdded}
+      />
 
       {/* Custom font imports */}
       <style>
