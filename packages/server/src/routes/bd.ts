@@ -5,6 +5,24 @@ import * as bd from "../lib/bd-cli.js";
 
 const bdRoutes = new Hono();
 
+// Helper to get database path from request
+function getDbPath(c: any): string | undefined {
+  // Check for project_path query parameter
+  const projectPath = c.req.query("project_path");
+  if (projectPath) {
+    return projectPath;
+  }
+  
+  // Check for X-Project-Path header
+  const headerPath = c.req.header("X-Project-Path");
+  if (headerPath) {
+    return headerPath;
+  }
+  
+  // Default to undefined (uses BEADS_DIR env var or auto-discovery)
+  return undefined;
+}
+
 // ============================================================================
 // Issues
 // ============================================================================
@@ -14,6 +32,7 @@ const bdRoutes = new Hono();
  * List issues with optional filters
  */
 bdRoutes.get("/issues", async (c) => {
+  const dbPath = getDbPath(c);
   const status = c.req.query("status");
   const type = c.req.query("type");
   const assignee = c.req.query("assignee");
@@ -32,7 +51,7 @@ bdRoutes.get("/issues", async (c) => {
     limit: limit ? parseInt(limit, 10) : undefined,
     sort,
     reverse,
-  });
+  }, dbPath);
 
   return c.json(issues);
 });
@@ -72,9 +91,10 @@ const createIssueSchema = z.object({
 });
 
 bdRoutes.post("/issues", zValidator("json", createIssueSchema), async (c) => {
+  const dbPath = getDbPath(c);
   const data = c.req.valid("json");
   try {
-    const issue = await bd.createIssue(data);
+    const issue = await bd.createIssue(data, dbPath);
     return c.json(issue, 201);
   } catch (error: any) {
     return c.json({ error: error.message }, 400);
@@ -106,10 +126,11 @@ bdRoutes.patch(
   "/issues/:id",
   zValidator("json", updateIssueSchema),
   async (c) => {
+    const dbPath = getDbPath(c);
     const id = c.req.param("id");
     const data = c.req.valid("json");
     try {
-      const issue = await bd.updateIssue(id, data);
+      const issue = await bd.updateIssue(id, data, dbPath);
       return c.json(issue);
     } catch (error: any) {
       return c.json({ error: error.message }, 400);
@@ -122,9 +143,10 @@ bdRoutes.patch(
  * Close an issue
  */
 bdRoutes.post("/issues/:id/close", async (c) => {
+  const dbPath = getDbPath(c);
   const id = c.req.param("id");
   try {
-    const result = await bd.closeIssue(id);
+    const result = await bd.closeIssue(id, dbPath);
     return c.json(result);
   } catch (error: any) {
     return c.json({ error: error.message }, 400);
@@ -136,9 +158,10 @@ bdRoutes.post("/issues/:id/close", async (c) => {
  * Reopen an issue
  */
 bdRoutes.post("/issues/:id/reopen", async (c) => {
+  const dbPath = getDbPath(c);
   const id = c.req.param("id");
   try {
-    const result = await bd.reopenIssue(id);
+    const result = await bd.reopenIssue(id, dbPath);
     return c.json(result);
   } catch (error: any) {
     return c.json({ error: error.message }, 400);
@@ -150,9 +173,10 @@ bdRoutes.post("/issues/:id/reopen", async (c) => {
  * Delete an issue
  */
 bdRoutes.delete("/issues/:id", async (c) => {
+  const dbPath = getDbPath(c);
   const id = c.req.param("id");
   try {
-    const result = await bd.deleteIssue(id);
+    const result = await bd.deleteIssue(id, dbPath);
     return c.json(result);
   } catch (error: any) {
     return c.json({ error: error.message }, 400);

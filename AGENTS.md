@@ -24,6 +24,19 @@ bun format           # Format code
 bun check            # Run linting and formatting
 ```
 
+### Development Server Policy
+
+**IMPORTANT**: AI agents should **NEVER** attempt to start any servers. Always assume servers are already running.
+
+- ❌ Do NOT run `bun dev`
+- ❌ Do NOT run `bun dev:ui`
+- ❌ Do NOT run `bun dev:all`
+- ✅ Assume the backend server is available
+- ✅ Assume the UI dev server is available at `http://localhost:3000`
+- ✅ Use `bun build` to build the UI if needed
+
+If a server is not running, ask the user to start it. Do not attempt to start servers yourself.
+
 ### Design Guidelines
 
 When working on the UI, follow the established **"Digital Abacus"** design system:

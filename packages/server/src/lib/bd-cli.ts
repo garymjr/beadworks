@@ -5,12 +5,22 @@
 /**
  * Execute a bd command and return the parsed JSON output
  */
-async function execBdCommand(args: string[]): Promise<any> {
+async function execBdCommand(args: string[], dbPath?: string): Promise<any> {
   const cmd = ["bd", ...args, "--json"];
+  
+  const env: Record<string, string> = {
+    ...process.env,
+  };
+  
+  // Set custom database path if provided
+  if (dbPath) {
+    env.BEADS_DIR = dbPath;
+  }
   
   const proc = Bun.spawn(cmd, {
     stdout: "pipe",
     stderr: "pipe",
+    env,
   });
 
   const stdout = await new Response(proc.stdout).text();
@@ -42,7 +52,7 @@ export async function listIssues(filters?: {
   limit?: number;
   sort?: string;
   reverse?: boolean;
-}) {
+}, dbPath?: string) {
   const args = ["list"];
 
   if (filters?.status) args.push("--status", filters.status);
@@ -56,14 +66,14 @@ export async function listIssues(filters?: {
   if (filters?.sort) args.push("--sort", filters.sort);
   if (filters?.reverse) args.push("--reverse");
 
-  return execBdCommand(args);
+  return execBdCommand(args, dbPath);
 }
 
 /**
  * Show issue details
  */
-export async function showIssue(id: string) {
-  return execBdCommand(["show", id]);
+export async function showIssue(id: string, dbPath?: string) {
+  return execBdCommand(["show", id], dbPath);
 }
 
 /**
@@ -83,7 +93,7 @@ export async function createIssue(data: {
   externalRef?: string;
   parent?: string;
   deps?: string[];
-}) {
+}, dbPath?: string) {
   const args = ["create", data.title];
 
   if (data.description) args.push("--description", data.description);
@@ -99,7 +109,7 @@ export async function createIssue(data: {
   if (data.parent) args.push("--parent", data.parent);
   if (data.deps) args.push("--deps", data.deps.join(","));
 
-  return execBdCommand(args);
+  return execBdCommand(args, dbPath);
 }
 
 /**
@@ -122,7 +132,8 @@ export async function updateIssue(
     design?: string;
     externalRef?: string;
     notes?: string;
-  }
+  },
+  dbPath?: string
 ) {
   const args = ["update", id];
 
@@ -147,114 +158,114 @@ export async function updateIssue(
   if (data.externalRef) args.push("--external-ref", data.externalRef);
   if (data.notes) args.push("--notes", data.notes);
 
-  return execBdCommand(args);
+  return execBdCommand(args, dbPath);
 }
 
 /**
  * Close an issue
  */
-export async function closeIssue(id: string) {
-  return execBdCommand(["close", id]);
+export async function closeIssue(id: string, dbPath?: string) {
+  return execBdCommand(["close", id], dbPath);
 }
 
 /**
  * Reopen an issue
  */
-export async function reopenIssue(id: string) {
-  return execBdCommand(["reopen", id]);
+export async function reopenIssue(id: string, dbPath?: string) {
+  return execBdCommand(["reopen", id], dbPath);
 }
 
 /**
  * Delete an issue
  */
-export async function deleteIssue(id: string) {
-  return execBdCommand(["delete", id]);
+export async function deleteIssue(id: string, dbPath?: string) {
+  return execBdCommand(["delete", id], dbPath);
 }
 
 /**
  * Get issue statistics
  */
-export async function getStats() {
-  return execBdCommand(["stats"]);
+export async function getStats(dbPath?: string) {
+  return execBdCommand(["stats"], dbPath);
 }
 
 /**
  * Get status overview
  */
-export async function getStatus() {
-  return execBdCommand(["status"]);
+export async function getStatus(dbPath?: string) {
+  return execBdCommand(["status"], dbPath);
 }
 
 /**
  * Search issues
  */
-export async function searchIssues(query: string) {
-  return execBdCommand(["search", query]);
+export async function searchIssues(query: string, dbPath?: string) {
+  return execBdCommand(["search", query], dbPath);
 }
 
 /**
  * Show blocked issues
  */
-export async function getBlockedIssues() {
-  return execBdCommand(["blocked"]);
+export async function getBlockedIssues(dbPath?: string) {
+  return execBdCommand(["blocked"], dbPath);
 }
 
 /**
  * Show ready issues (no blockers)
  */
-export async function getReadyIssues() {
-  return execBdCommand(["ready"]);
+export async function getReadyIssues(dbPath?: string) {
+  return execBdCommand(["ready"], dbPath);
 }
 
 /**
  * Show stale issues
  */
-export async function getStaleIssues() {
-  return execBdCommand(["stale"]);
+export async function getStaleIssues(dbPath?: string) {
+  return execBdCommand(["stale"], dbPath);
 }
 
 /**
  * Get database info
  */
-export async function getInfo() {
-  return execBdCommand(["info"]);
+export async function getInfo(dbPath?: string) {
+  return execBdCommand(["info"], dbPath);
 }
 
 /**
  * List available projects/repositories
  */
-export async function listRepos() {
-  return execBdCommand(["repo", "list"]);
+export async function listRepos(dbPath?: string) {
+  return execBdCommand(["repo", "list"], dbPath);
 }
 
 /**
  * Get labels
  */
-export async function getLabels() {
-  return execBdCommand(["label", "list"]);
+export async function getLabels(dbPath?: string) {
+  return execBdCommand(["label", "list"], dbPath);
 }
 
 /**
  * Add comment to issue
  */
-export async function addComment(id: string, comment: string) {
-  return execBdCommand(["comment", id, "--message", comment]);
+export async function addComment(id: string, comment: string, dbPath?: string) {
+  return execBdCommand(["comment", id, "--message", comment], dbPath);
 }
 
 /**
  * Get comments for issue
  */
-export async function getComments(id: string) {
-  return execBdCommand(["comments", "list", id]);
+export async function getComments(id: string, dbPath?: string) {
+  return execBdCommand(["comments", "list", id], dbPath);
 }
 
 /**
  * Manage dependencies
  */
-export async function addDep(issue: string, dep: string) {
-  return execBdCommand(["dep", "add", issue, dep]);
+export async function addDep(issue: string, dep: string, dbPath?: string) {
+  return execBdCommand(["dep", "add", issue, dep], dbPath);
 }
 
-export async function removeDep(issue: string, dep: string) {
-  return execBdCommand(["dep", "remove", issue, dep]);
+export async function removeDep(issue: string, dep: string, dbPath?: string) {
+  return execBdCommand(["dep", "remove", issue, dep], dbPath);
 }

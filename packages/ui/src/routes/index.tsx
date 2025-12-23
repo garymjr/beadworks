@@ -1,13 +1,15 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { useState, useEffect, useCallback } from 'react'
+import { getTasks, updateTaskStatus } from '../lib/api/server-fns'
+import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
+import type { Task } from '../lib/api/types'
+import { ProjectSelector } from '../components/ProjectSelector'
+import { getCurrentProject } from '../lib/projects'
+import type { Project } from '../lib/projects'
 
-interface Task {
-  id: string
-  title: string
-  description: string
-  priority: 'low' | 'medium' | 'high'
-  beadColor: string
-  tags: string[]
+// Search params type for this route
+interface IndexSearch {
+  projectPath?: string
 }
 
 interface Column {
@@ -16,58 +18,54 @@ interface Column {
   tasks: Task[]
 }
 
-const initialTasks: Task[] = [
-  {
-    id: 't1',
-    title: 'Initialize Agent Core',
-    description: 'Bootstrap the primary agent with system prompts and tool bindings',
-    priority: 'high',
-    beadColor: '#ff6b6b',
-    tags: ['core', 'setup'],
-  },
-  {
-    id: 't2',
-    title: 'Configure Memory Store',
-    description: 'Set up vector database for episodic and semantic memory',
-    priority: 'high',
-    beadColor: '#ffd93d',
-    tags: ['database', 'memory'],
-  },
-  {
-    id: 't3',
-    title: 'Implement Tool Registry',
-    description: 'Create dynamic tool loading and validation system',
-    priority: 'medium',
-    beadColor: '#6bcb77',
-    tags: ['tools', 'system'],
-  },
-  {
-    id: 't4',
-    title: 'Design Task Orchestration',
-    description: 'Build the task decomposition and execution pipeline',
-    priority: 'medium',
-    beadColor: '#4d96ff',
-    tags: ['architecture'],
-  },
-  {
-    id: 't5',
-    title: 'Create Skill Loader',
-    description: 'Implement skill discovery and hot-reloading mechanism',
-    priority: 'low',
-    beadColor: '#9b59b6',
-    tags: ['skills', 'dynamic'],
-  },
-  {
-    id: 't6',
-    title: 'Add Logging Infrastructure',
-    description: 'Structured logging with trace ID propagation',
-    priority: 'low',
-    beadColor: '#ff9ff3',
-    tags: ['observability'],
-  },
+// Bead colors for visual variety
+const BEAD_COLORS = [
+  '#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#9b59b6', '#ff9ff3',
+  '#ff9f43', '#54a0ff', '#5f27cd', '#00d2d3', '#1dd1a1', '#f368e0'
 ]
 
-export default function BeadworksKanban() {
+// Helper to get a consistent color for a task
+function getBeadColor(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return BEAD_COLORS[Math.abs(hash) % BEAD_COLORS.length]
+}
+
+// Helper to get priority from labels
+function getPriorityFromLabels(labels?: string[]): 'low' | 'medium' | 'high' {
+  if (!labels || labels.length === 0) return 'medium'
+  
+  const labelLower = labels.map(l => l.toLowerCase())
+  if (labelLower.some(l => l.includes('critical') || l.includes('urgent'))) return 'high'
+  if (labelLower.some(l => l.includes('priority:high') || l.includes('high-priority'))) return 'high'
+  if (labelLower.some(l => l.includes('priority:low') || l.includes('low-priority'))) return 'low'
+  if (labelLower.some(l => l.includes('priority:medium'))) return 'medium'
+  
+  return 'medium'
+}
+
+export const Route = createFileRoute('/')({
+  component: BeadworksKanban,
+  validateSearch: () => ({
+    projectPath: undefined,
+  }),
+  loader: async () => {
+    try {
+      const tasks = await getTasks({ data: undefined })
+      return { tasks, error: null }
+    } catch (error) {
+      console.error('Failed to load tasks:', error)
+      return { tasks: [], error: error instanceof Error ? error.message : 'Failed to load tasks' }
+    }
+  },
+})
+
+function BeadworksKanban() {
+  const router = useRouter()
+  const { tasks: initialTasks, error } = Route.useLoaderData()
+  
   const [columns, setColumns] = useState<Column[]>([
     { id: 'todo', title: 'Todo', tasks: [] },
     { id: 'blocked', title: 'Blocked', tasks: [] },
@@ -78,19 +76,60 @@ export default function BeadworksKanban() {
 
   const [draggedTask, setDraggedTask] = useState<Task | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
+  const [isUpdating, setIsUpdating] = useState<string | null>(null)
+  
+  // Track current project - initialize safely for SSR
+  const [currentProject, setCurrentProject] = useState<Project | null>(null)
+  
+  // Load current project from localStorage on mount
+  useEffect(() => {
+    const project = getCurrentProject()
+    setCurrentProject(project)
+    
+    // Sync URL with current project
+    if (project?.path) {
+      const url = new URL(window.location.href)
+      if (!url.searchParams.get('projectPath')) {
+        url.searchParams.set('projectPath', project.path)
+        window.history.replaceState({}, '', url.toString())
+      }
+    }
+  }, [])
+  
+  // Handle project changes - update URL and refetch
+  const handleProjectChange = useCallback((project: Project | null) => {
+    setCurrentProject(project)
+    
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      if (project?.path) {
+        url.searchParams.set('projectPath', project.path)
+      } else {
+        url.searchParams.delete('projectPath')
+      }
+      window.history.replaceState({}, '', url.toString())
+      
+      // Refetch with new project path
+      router.invalidate()
+    }
+  }, [router])
 
-  // Distribute initial tasks across columns
+  // Organize tasks into columns
   useEffect(() => {
     setColumns(prev => {
-      const newCols = [...prev]
-      newCols[0].tasks = [initialTasks[5]]  // Todo: Logging Infrastructure
-      newCols[1].tasks = [initialTasks[4]]  // Blocked: Skill Loader
-      newCols[2].tasks = [initialTasks[0], initialTasks[1]]  // Ready: Agent Core, Memory Store
-      newCols[3].tasks = [initialTasks[2]]  // In Progress: Tool Registry
-      newCols[4].tasks = [initialTasks[3]]  // Done: Task Orchestration
+      const newCols = prev.map(col => ({ ...col, tasks: [] }))
+      
+      initialTasks.forEach(task => {
+        const columnId = STATUS_COLUMN_MAP[task.status] || 'todo'
+        const colIndex = newCols.findIndex(c => c.id === columnId)
+        if (colIndex !== -1) {
+          newCols[colIndex].tasks.push(task)
+        }
+      })
+      
       return newCols
     })
-  }, [])
+  }, [initialTasks])
 
   const handleDragStart = (task: Task) => {
     setDraggedTask(task)
@@ -105,11 +144,15 @@ export default function BeadworksKanban() {
     setDragOverColumn(null)
   }
 
-  const handleDrop = (e: React.DragEvent, targetColumnId: string) => {
+  const handleDrop = async (e: React.DragEvent, targetColumnId: string) => {
     e.preventDefault()
     
     if (!draggedTask) return
 
+    const newStatus = COLUMN_STATUS_MAP[targetColumnId]
+    if (!newStatus) return
+
+    // Optimistically update UI
     setColumns(prev => {
       return prev.map(col => {
         if (col.id === targetColumnId) {
@@ -132,6 +175,24 @@ export default function BeadworksKanban() {
 
     setDraggedTask(null)
     setDragOverColumn(null)
+
+    // Update backend
+    try {
+      setIsUpdating(draggedTask.id)
+      await updateTaskStatus({ 
+        id: draggedTask.id, 
+        status: newStatus,
+        projectPath: currentProject?.path 
+      })
+      // Invalidate loader to refresh data
+      router.invalidate()
+    } catch (error) {
+      console.error('Failed to update task status:', error)
+      // Revert on error by invalidating
+      router.invalidate()
+    } finally {
+      setIsUpdating(null)
+    }
   }
 
   const handleDragEnd = () => {
@@ -146,12 +207,6 @@ export default function BeadworksKanban() {
       case 'low': return 'shadow-[0_0_30px_rgba(107,203,119,0.4)]'
       default: return ''
     }
-  }
-
-  const getWirePath = (index: number) => {
-    const isDragging = dragOverColumn !== null
-    const tension = isDragging ? 15 : 25
-    return `M0,${40 + index * 80} Q${tension},${50 + index * 80} 50,${50 + index * 80}`
   }
 
   return (
@@ -175,21 +230,26 @@ export default function BeadworksKanban() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" />
                   </svg>
                 </div>
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-slate-900" />
+                <div className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900 ${error ? 'bg-red-400' : 'bg-emerald-400'}`} />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-white tracking-tight" style={{ fontFamily: 'Outfit, sans-serif' }}>
                   Beadworks
                 </h1>
-                <p className="text-sm text-slate-400">Agent Task Orchestration</p>
+                <p className="text-sm text-slate-400">
+                  {error ? 'Connection Error' : 'Connected to Beadworks'}
+                </p>
               </div>
             </div>
             
             <div className="flex items-center gap-3">
+              {/* Project Selector */}
+              <ProjectSelector onProjectChange={handleProjectChange} />
+              
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <div className={`w-2 h-2 rounded-full ${error ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`} />
                 <span className="text-sm text-slate-300" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                  {columns.reduce((acc, col) => acc + col.tasks.length, 0)} tasks active
+                  {columns.reduce((acc, col) => acc + col.tasks.length, 0)} tasks loaded
                 </span>
               </div>
               <button className="px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-medium hover:shadow-lg hover:shadow-purple-500/25 transition-all duration-300 hover:scale-105">
@@ -205,7 +265,7 @@ export default function BeadworksKanban() {
         <div className="max-w-[1800px] mx-auto">
           {/* Column Headers with Wire Metaphor */}
           <div className="flex gap-6 mb-8">
-            {columns.map((column, index) => (
+            {columns.map((column) => (
               <div
                 key={column.id}
                 className="flex-1 min-w-[280px] max-w-[340px]"
@@ -251,67 +311,91 @@ export default function BeadworksKanban() {
                     
                     {/* Tasks */}
                     <div className="relative space-y-3">
-                      {column.tasks.map((task, taskIndex) => (
-                        <div
-                          key={task.id}
-                          draggable
-                          onDragStart={() => handleDragStart(task)}
-                          onDragEnd={handleDragEnd}
-                          className={`group relative cursor-grab active:cursor-grabbing transition-all duration-300 ${
-                            draggedTask?.id === task.id ? 'opacity-50 scale-95' : 'hover:scale-[1.02]'
-                          }`}
-                        >
-                          {/* Glow effect */}
-                          <div className={`absolute -inset-1 rounded-2xl bg-gradient-to-r opacity-0 group-hover:opacity-20 blur-lg transition-opacity duration-300`} style={{ background: task.beadColor }} />
-                          
-                          {/* Bead task card */}
-                          <div className={`relative bg-slate-900/80 backdrop-blur-sm rounded-xl border border-white/10 p-4 shadow-xl ${getPriorityGlow(task.priority)} transition-shadow duration-300`}>
-                            {/* Bead indicator */}
-                            <div className="absolute -top-3 left-6">
-                              <div
-                                className="w-8 h-8 rounded-full shadow-lg"
-                                style={{
-                                  background: `radial-gradient(circle at 30% 30%, ${task.beadColor}dd, ${task.beadColor}88)`,
-                                  boxShadow: `0 4px 12px ${task.beadColor}40, inset 0 1px 0 rgba(255,255,255,0.3)`,
-                                }}
-                              />
-                            </div>
-
-                            {/* Task content */}
-                            <div className="mt-3">
-                              <h3 className="text-white font-medium mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                                {task.title}
-                              </h3>
-                              <p className="text-sm text-slate-400 leading-relaxed mb-3">
-                                {task.description}
-                              </p>
-                              
-                              {/* Tags */}
-                              <div className="flex flex-wrap gap-2 mb-3">
-                                {task.tags.map(tag => (
-                                  <span
-                                    key={tag}
-                                    className="px-2 py-1 rounded-md text-xs font-medium bg-white/5 text-slate-300 border border-white/10"
-                                    style={{ fontFamily: 'JetBrains Mono, monospace' }}
-                                  >
-                                    #{tag}
-                                  </span>
-                                ))}
+                      {column.tasks.map((task) => {
+                        const priority = getPriorityFromLabels(task.labels)
+                        const beadColor = getBeadColor(task.id)
+                        
+                        return (
+                          <div
+                            key={task.id}
+                            draggable
+                            onDragStart={() => handleDragStart(task)}
+                            onDragEnd={handleDragEnd}
+                            className={`group relative cursor-grab active:cursor-grabbing transition-all duration-300 ${
+                              draggedTask?.id === task.id || isUpdating === task.id ? 'opacity-50 scale-95' : 'hover:scale-[1.02]'
+                            }`}
+                          >
+                            {/* Glow effect */}
+                            <div 
+                              className="absolute -inset-1 rounded-2xl opacity-0 group-hover:opacity-20 blur-lg transition-opacity duration-300" 
+                              style={{ background: beadColor }}
+                            />
+                            
+                            {/* Bead task card */}
+                            <div className={`relative bg-slate-900/80 backdrop-blur-sm rounded-xl border border-white/10 p-4 shadow-xl ${getPriorityGlow(priority)} transition-shadow duration-300`}>
+                              {/* Bead indicator */}
+                              <div className="absolute -top-3 left-6">
+                                <div
+                                  className="w-8 h-8 rounded-full shadow-lg"
+                                  style={{
+                                    background: `radial-gradient(circle at 30% 30%, ${beadColor}dd, ${beadColor}88)`,
+                                    boxShadow: `0 4px 12px ${beadColor}40, inset 0 1px 0 rgba(255,255,255,0.3)`,
+                                  }}
+                                />
                               </div>
 
-                              {/* Priority indicator */}
-                              <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${
-                                  task.priority === 'high' ? 'bg-red-400' :
-                                  task.priority === 'medium' ? 'bg-yellow-400' :
-                                  'bg-emerald-400'
-                                }`} />
-                                <span className="text-xs text-slate-500 capitalize">{task.priority} priority</span>
+                              {/* Task content */}
+                              <div className="mt-3">
+                                <h3 className="text-white font-medium mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                                  {task.title}
+                                </h3>
+                                
+                                {task.description && (
+                                  <p className="text-sm text-slate-400 leading-relaxed mb-3 line-clamp-2">
+                                    {task.description}
+                                  </p>
+                                )}
+                                
+                                {/* Tags */}
+                                {task.labels && task.labels.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mb-3">
+                                    {task.labels.slice(0, 3).map(label => (
+                                      <span
+                                        key={label}
+                                        className="px-2 py-1 rounded-md text-xs font-medium bg-white/5 text-slate-300 border border-white/10"
+                                        style={{ fontFamily: 'JetBrains Mono, monospace' }}
+                                      >
+                                        #{label}
+                                      </span>
+                                    ))}
+                                    {task.labels.length > 3 && (
+                                      <span className="px-2 py-1 rounded-md text-xs font-medium bg-white/5 text-slate-400 border border-white/10">
+                                        +{task.labels.length - 3}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Priority indicator */}
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-2 h-2 rounded-full ${
+                                    priority === 'high' ? 'bg-red-400' :
+                                    priority === 'medium' ? 'bg-yellow-400' :
+                                    'bg-emerald-400'
+                                  }`} />
+                                  <span className="text-xs text-slate-500 capitalize">{priority} priority</span>
+                                  {task.issue_type && (
+                                    <>
+                                      <span className="text-slate-600">•</span>
+                                      <span className="text-xs text-slate-500 capitalize">{task.issue_type}</span>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
 
                       {column.tasks.length === 0 && (
                         <div className="py-16 text-center">
@@ -338,8 +422,13 @@ export default function BeadworksKanban() {
           <div className="flex items-center justify-between text-xs" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
             <div className="flex items-center gap-6">
               <span className="text-slate-500">
-                <span className="text-violet-400">●</span> System Active
+                <span className={error ? 'text-red-400' : 'text-violet-400'}>●</span> {error ? 'Error' : 'System Active'}
               </span>
+              {error && (
+                <span className="text-red-400">
+                  {error}
+                </span>
+              )}
               <span className="text-slate-500">
                 Last sync: <span className="text-slate-300">just now</span>
               </span>
@@ -360,7 +449,3 @@ export default function BeadworksKanban() {
     </div>
   )
 }
-
-export const Route = createFileRoute('/')({
-  component: BeadworksKanban,
-})
