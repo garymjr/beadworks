@@ -1,0 +1,22 @@
+{
+  "name": "beadworks-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter @beadworks/ui dev",
+    "build": "bun run --filter @beadworks/ui build",
+    "preview": "bun run --filter @beadworks/ui preview",
+    "test": "bun run --filter @beadworks/ui test",
+    "lint": "bun run --filter @beadworks/ui lint",
+    "format": "bun run --filter @beadworks/ui format",
+    "check": "bun run --filter @beadworks/ui check"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "prettier": "^3.5.3"
+  }
+}
