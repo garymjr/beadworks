@@ -46,8 +46,9 @@ const initialState: AgentWorkState = {
 const MAX_RETRY_ATTEMPTS = 5
 const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000] // Exponential backoff
 
-export function useAgentEvents(issueId: string, enabled: boolean = true) {
-  const [state, setState] = useState<AgentWorkState>(initialState)
+export function useAgentEvents(issueId: string, enabled: boolean = true, initialStateOverride?: Partial<AgentWorkState>) {
+  // Use initial state from override if provided (for rehydration), otherwise use default
+  const [state, setState] = useState<AgentWorkState>(() => initialStateOverride ? { ...initialState, ...initialStateOverride } : initialState)
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -55,7 +56,9 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
   const retryCountRef = useRef(0)
   const lastEventTimeRef = useRef(Date.now())
   // Track current status for error handler (avoiding closure issues)
-  const currentStatusRef = useRef<AgentWorkState['status']>(initialState.status)
+  const currentStatusRef = useRef<AgentWorkState['status']>(initialStateOverride?.status || initialState.status)
+  // Track the initial override for reset
+  const initialStateOverrideRef = useRef(initialStateOverride)
 
   const connect = useCallback(() => {
     if (!enabled || !issueId) return
@@ -228,8 +231,11 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
 
   // Reset state when issueId changes
   useEffect(() => {
-    setState(initialState)
-    currentStatusRef.current = initialState.status
+    const resetState = initialStateOverrideRef.current
+      ? { ...initialState, ...initialStateOverrideRef.current }
+      : initialState
+    setState(resetState)
+    currentStatusRef.current = resetState.status
     setConnectionError(null)
     retryCountRef.current = 0
   }, [issueId])
@@ -282,6 +288,30 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
 
     return () => clearInterval(checkInterval)
   }, [isConnected, reconnect])
+
+  // Persist work state to localStorage whenever it changes
+  // This allows rehydration after page refresh
+  useEffect(() => {
+    if (!issueId || typeof window === 'undefined') return
+
+    try {
+      // Read existing sessions
+      const STORAGE_KEY = 'beadworks_active_work'
+      const data = localStorage.getItem(STORAGE_KEY)
+      const sessions = data ? JSON.parse(data) : []
+
+      // Find and update the session for this issue
+      const sessionIndex = sessions.findIndex((s: any) => s.issueId === issueId)
+      if (sessionIndex !== -1) {
+        // Update the work state for this session
+        sessions[sessionIndex].workState = state
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
+        console.log('[useAgentEvents] Persisted work state for', issueId)
+      }
+    } catch (error) {
+      console.error('[useAgentEvents] Failed to persist work state:', error)
+    }
+  }, [state, issueId])
 
   return {
     ...state,

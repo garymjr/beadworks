@@ -1,3 +1,5 @@
+import type { AgentWorkState } from '../hooks/useAgentEvents'
+
 /**
  * LocalStorage-based persistence for active work sessions
  * Enables reconnection to running agent work after page refresh
@@ -8,6 +10,7 @@ export interface StoredActiveWork {
   issueTitle: string
   startedAt: number
   projectPath: string
+  workState?: AgentWorkState // Persist agent work state (progress, events, etc.)
 }
 
 class ActiveWorkStore {
