@@ -87,11 +87,11 @@ workRoutes.get('/events', async (c) => {
             }
             safeEnqueue(encoder.encode(`data: ${JSON.stringify(progressEvent)}\n\n`))
 
-            // Replay recent step events (last 50)
+            // Replay recent events (last 50) - all types (status, progress, step, error, complete)
             const recentEvents = session.events.slice(-50)
             for (const event of recentEvents) {
               const replayEvent = {
-                type: 'step',
+                type: event.type, // Use the actual event type
                 issueId: session.issueId,
                 workId: session.workId,
                 timestamp: event.timestamp,
