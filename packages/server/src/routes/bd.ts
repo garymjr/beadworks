@@ -337,7 +337,17 @@ bdRoutes.get("/issues/:id/subtasks", async (c) => {
   try {
     // Get all issues and filter by parent
     const allIssues = await bd.listIssues(undefined, dbPath);
-    const subtasks = allIssues.filter((issue: any) => issue.parent === id);
+
+    // Filter subtasks - bd uses dot notation for subtasks (e.g., "server-d98.6" is a subtask of "server-d98")
+    // Check for parent field first (if bd adds it in the future), then fall back to ID pattern matching
+    const subtasks = allIssues.filter((issue: any) => {
+      // If there's an explicit parent field, use it
+      if (issue.parent === id) return true;
+
+      // Otherwise, check if the issue ID starts with the parent ID followed by a dot
+      // e.g., "server-d98.6" is a subtask of "server-d98"
+      return issue.id.startsWith(`${id}.`);
+    });
 
     // Calculate progress
     const total = subtasks.length;

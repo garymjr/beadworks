@@ -81,6 +81,28 @@ function getPriorityFromLabels(
   return 'medium'
 }
 
+// Helper to detect if a task is a subtask
+// Subtasks have IDs with a dot (e.g., "server-d98.6" is a subtask of "server-d98")
+function isSubtask(task: Task): boolean {
+  // Check if task has a parent field
+  if (task.parent) return true
+
+  // Check if ID contains a dot (bd's notation for subtasks)
+  if (task.id.includes('.')) return true
+
+  return false
+}
+
+// Helper to get parent task ID from a subtask ID
+function getParentTaskId(subtaskId: string): string {
+  // For IDs like "server-d98.6", return "server-d98"
+  const dotIndex = subtaskId.lastIndexOf('.')
+  if (dotIndex > 0) {
+    return subtaskId.substring(0, dotIndex)
+  }
+  return subtaskId
+}
+
 // Stable empty array reference to avoid infinite re-renders
 const EMPTY_TASKS: Array<Task> = []
 
@@ -136,6 +158,28 @@ function BeadworksKanban() {
   const [columns, setColumns] = useState<Array<Column>>(baseColumns)
   const prevTasksRef = useRef<Array<Task>>(EMPTY_TASKS)
 
+  // Fetch subtask progress for all parent tasks
+  useEffect(() => {
+    tasks.forEach(async (task) => {
+      // Only fetch for parent tasks (not subtasks)
+      if (!isSubtask(task)) {
+        try {
+          const result = await getSubtasks(task.id, search.projectPath)
+          // Only store progress if there are subtasks
+          if (result.subtasks && result.subtasks.length > 0) {
+            setSubtaskProgress((prev) => ({
+              ...prev,
+              [task.id]: result.progress,
+            }))
+          }
+        } catch (e) {
+          // Silently fail - not all tasks have subtasks
+          console.debug('No subtasks for task:', task.id)
+        }
+      }
+    })
+  }, [tasks, search.projectPath])
+
   // Organize tasks into columns - only update if tasks actually changed
   useEffect(() => {
     // Only update if the tasks reference actually changed (not just a new empty array)
@@ -147,8 +191,9 @@ function BeadworksKanban() {
       const newCols = prev.map((col) => ({ ...col, tasks: [] }))
 
       tasks.forEach((task) => {
-        // Filter out subtasks (tasks that have a parent) - they shouldn't show on main board
-        if (task.parent) return
+        // Filter out subtasks - they shouldn't show on main board
+        // Subtasks are detected by having a parent field OR a dot in their ID
+        if (isSubtask(task)) return
 
         // Determine the column for this task
         let columnId = STATUS_COLUMN_MAP[task.status] || 'todo'
@@ -166,22 +211,7 @@ function BeadworksKanban() {
 
       return newCols
     })
-
-    // Fetch subtask progress for tasks that have AI-generated plans
-    tasks.forEach(async (task) => {
-      if (task.labels?.includes('ai-plan-generated') && !task.parent) {
-        try {
-          const result = await getSubtasks(task.id, search.projectPath)
-          setSubtaskProgress((prev) => ({
-            ...prev,
-            [task.id]: result.progress,
-          }))
-        } catch (e) {
-          console.error('Failed to fetch subtask progress:', e)
-        }
-      }
-    })
-  }, [tasks, search.projectPath])
+  }, [tasks])
 
   const [draggedTask, setDraggedTask] = useState<Task | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
