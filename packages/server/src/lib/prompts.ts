@@ -262,21 +262,35 @@ Break this down into 3-8 specific implementation steps. Think about:
 - Should there be a data migration or schema change?
 - What about error handling and edge cases?
 
-Respond with a JSON object in the following format (no markdown, no explanation):
+CRITICAL: Respond with VALID JSON ONLY. No markdown, no explanation, no text before or after the JSON.
+Your JSON must have proper syntax:
+- All property names in double quotes: "title": not title:
+- All string values in double quotes
+- Proper commas between properties
+- No trailing commas
+
+IMPORTANT - AVOID COLONS IN STRING VALUES:
+When writing descriptions, AVOID patterns like "step 1):", "that":", etc. inside quoted strings.
+These break JSON parsers. Instead use:
+- "step 1)" without colon after the parenthesis
+- "that does" instead of "that":"
+- Semicolons or dashes instead of colons for lists
+- Bullet points with • or -
+
 {
   "plan": "Brief technical approach (2-3 sentences explaining the overall strategy)",
   "subtasks": [
     {
-      "title": "Implementation step title (e.g., 'Create user authentication API endpoint' or 'Add error handling to payment processor')",
-      "description": "Specific technical details - what files to modify, what functions to create, etc.",
-      "type": "task|bug|chore"
+      "title": "Implementation step title",
+      "description": "Specific technical details - what files to modify, what functions to create, etc. Use semicolons for lists; avoid colons after quotes.",
+      "type": "task"
     }
   ],
   "risks": ["Potential technical risks, edge cases to consider, or things that might go wrong"]
 }
 
 EXAMPLE OF GOOD SUBTASKS:
-- "Create REST API endpoint for user registration" → "Add POST /api/users/register route in src/routes/users.ts. Implement input validation, password hashing with bcrypt, and user creation. Return 201 with user object or 400 for validation errors."
+- "Create REST API endpoint for user registration" → "Add POST /api/users/register route in src/routes/users.ts. Implement input validation; password hashing with bcrypt; user creation. Return 201 with user object or 400 for validation errors."
 - "Add unit tests for payment processing" → "Create test file src/services/payment.test.ts. Add tests for successful payment, failed payment, and edge cases like insufficient funds. Use jest mock for Stripe API."
 
 EXAMPLE OF BAD SUBTASKS (avoid these):
@@ -285,6 +299,12 @@ EXAMPLE OF BAD SUBTASKS (avoid these):
 - "Research the best way to implement"
 
 Remember: These are REAL implementation steps. Each subtask should be something a developer sits down and codes.
+
+IMPORTANT: Double-check your JSON syntax before responding. Ensure:
+1. Every property name has both opening and closing quotes
+2. Every comma is in the right place
+3. No trailing commas before closing braces/brackets
+4. NO patterns like "word": inside string values (breaks JSON!)
 
 Respond ONLY with the JSON object, nothing else.`
 }
