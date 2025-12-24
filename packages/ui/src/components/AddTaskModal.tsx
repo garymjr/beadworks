@@ -36,7 +36,7 @@ export function AddTaskModal({
   onTaskCreated,
   projectPath,
 }: AddTaskModalProps) {
-  const [description, setDescription] = useState('')
+  const [prompt, setPrompt] = useState('')
   const [type, setType] = useState<
     'bug' | 'feature' | 'task' | 'epic' | 'chore'
   >('task')
@@ -47,36 +47,41 @@ export function AddTaskModal({
   const [generatedLabels, setGeneratedLabels] = useState<Array<string> | null>(
     null,
   )
+  const [generatedDescription, setGeneratedDescription] = useState<string | null>(
+    null,
+  )
 
   // Reset form when modal opens/closes
   useEffect(() => {
     if (!isOpen) {
-      setDescription('')
+      setPrompt('')
       setType('task')
       setPriority(2)
       setGeneratedTitle(null)
       setGeneratedLabels(null)
+      setGeneratedDescription(null)
     }
   }, [isOpen])
 
-  async function generateTitleAndLabels() {
-    if (!description.trim()) {
-      alert('Please enter a description')
+  async function generateTaskDetails() {
+    if (!prompt.trim()) {
+      alert('Please enter a prompt')
       return
     }
 
     setIsGenerating(true)
 
     try {
-      const result = await generateTask(description.trim(), type, projectPath)
+      const result = await generateTask(prompt.trim(), type, projectPath)
       setGeneratedTitle(result.title)
+      setGeneratedDescription(result.description || null)
       setGeneratedLabels(result.labels || [])
     } catch (error) {
-      console.error('Failed to generate title and labels:', error)
+      console.error('Failed to generate task details:', error)
       alert(
         error instanceof Error
           ? error.message
-          : 'Failed to generate title and labels',
+          : 'Failed to generate task details',
       )
     } finally {
       setIsGenerating(false)
@@ -86,7 +91,7 @@ export function AddTaskModal({
   async function handleSubmit() {
     if (!generatedTitle) {
       // Generate first if not already generated
-      await generateTitleAndLabels()
+      await generateTaskDetails()
       return
     }
 
@@ -99,22 +104,26 @@ export function AddTaskModal({
         priority: priority.toString(),
       }
 
-      if (description.trim()) {
-        input.description = description.trim()
+      // Use the AI-generated description, or fall back to the original prompt
+      const descriptionToUse = generatedDescription || prompt.trim()
+      if (descriptionToUse) {
+        input.description = descriptionToUse
       }
 
       if (generatedLabels && generatedLabels.length > 0) {
         input.labels = generatedLabels
       }
 
+      console.log('[AddTaskModal] Creating task with priority:', priority, 'type:', typeof priority, 'input:', input)
       await createTask(input, projectPath)
 
       // Reset and close
-      setDescription('')
+      setPrompt('')
       setType('task')
       setPriority(2)
       setGeneratedTitle(null)
       setGeneratedLabels(null)
+      setGeneratedDescription(null)
       onClose()
 
       // Trigger refresh
@@ -130,7 +139,7 @@ export function AddTaskModal({
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       if (!generatedTitle) {
-        generateTitleAndLabels()
+        generateTaskDetails()
       } else {
         handleSubmit()
       }
@@ -175,26 +184,26 @@ export function AddTaskModal({
 
         {/* Content */}
         <div className="px-6 py-5 space-y-5 max-h-[60vh] overflow-y-auto">
-          {/* Description */}
+          {/* Prompt */}
           <div>
             <label
               className="block text-sm font-medium text-slate-300 mb-2"
               style={{ fontFamily: 'Outfit, sans-serif' }}
             >
-              Description <span className="text-red-400">*</span>
+              Prompt <span className="text-red-400">*</span>
             </label>
             <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe what needs to be done... The AI will generate a title and labels for you."
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Briefly describe what you need... The AI will generate a full title, description, and labels."
               rows={4}
               className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all resize-none"
               style={{ fontFamily: 'JetBrains Mono, monospace' }}
               autoFocus
             />
             <p className="text-xs text-slate-500 mt-1.5">
-              The AI will generate a concise title and relevant labels from your
-              description
+              The AI will expand your prompt into a complete task with title,
+              detailed description, and relevant labels
             </p>
           </div>
 
@@ -320,6 +329,18 @@ export function AddTaskModal({
                 </div>
               </div>
 
+              {/* Generated Description */}
+              {generatedDescription && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Description
+                  </label>
+                  <div className="px-3 py-2 rounded-lg bg-white/5 text-white text-sm whitespace-pre-wrap">
+                    {generatedDescription}
+                  </div>
+                </div>
+              )}
+
               {/* Generated Labels */}
               {generatedLabels && generatedLabels.length > 0 && (
                 <div>
@@ -343,6 +364,7 @@ export function AddTaskModal({
                 onClick={() => {
                   setGeneratedTitle(null)
                   setGeneratedLabels(null)
+                  setGeneratedDescription(null)
                 }}
                 className="text-xs text-slate-400 hover:text-slate-300 underline underline-offset-2"
               >
@@ -357,7 +379,7 @@ export function AddTaskModal({
               ⌘ Enter
             </kbd>
             <span className="text-xs text-slate-500">
-              {generatedTitle ? 'to create task' : 'to generate title & labels'}
+              {generatedTitle ? 'to create task' : 'to generate task details'}
             </span>
           </div>
         </div>
@@ -376,13 +398,13 @@ export function AddTaskModal({
               if (generatedTitle) {
                 handleSubmit()
               } else {
-                generateTitleAndLabels()
+                generateTaskDetails()
               }
             }}
             disabled={
               isGenerating ||
               isSubmitting ||
-              (!generatedTitle && !description.trim())
+              (!generatedTitle && !prompt.trim())
             }
             className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -392,7 +414,7 @@ export function AddTaskModal({
                 ? 'Creating...'
                 : generatedTitle
                   ? 'Create Task'
-                  : 'Generate Title & Labels'}
+                  : 'Generate Task'}
           </button>
         </div>
       </div>
