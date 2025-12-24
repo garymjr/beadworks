@@ -16,7 +16,14 @@ interface WorkProgressModalProps {
   startedAt?: number
 }
 
-type EventFilter = 'all' | 'tool_call' | 'file_read' | 'file_write' | 'shell_command' | 'status' | 'progress'
+type EventFilter =
+  | 'all'
+  | 'tool_call'
+  | 'file_read'
+  | 'file_write'
+  | 'shell_command'
+  | 'status'
+  | 'progress'
 
 export function WorkProgressModal({
   isOpen,
@@ -43,16 +50,16 @@ export function WorkProgressModal({
   const sessionStats = useMemo(() => {
     const steps = workState.events.filter((e) => e.type === 'step')
     const toolCalls = steps.filter(
-      (e) => e.type === 'step' && e.data.stepType === 'tool_call'
+      (e) => e.type === 'step' && e.data.stepType === 'tool_call',
     ).length
     const fileReads = steps.filter(
-      (e) => e.type === 'step' && e.data.stepType === 'file_read'
+      (e) => e.type === 'step' && e.data.stepType === 'file_read',
     ).length
     const fileWrites = steps.filter(
-      (e) => e.type === 'step' && e.data.stepType === 'file_write'
+      (e) => e.type === 'step' && e.data.stepType === 'file_write',
     ).length
     const shellCommands = steps.filter(
-      (e) => e.type === 'step' && e.data.stepType === 'shell_command'
+      (e) => e.type === 'step' && e.data.stepType === 'shell_command',
     ).length
     const duration = startedAt ? Date.now() - startedAt : 0
     const durationSec = Math.floor(duration / 1000)
@@ -77,7 +84,7 @@ export function WorkProgressModal({
   // Helper to safely extract optional properties from event data
   const getEventProperty = (
     event: AgentEvent,
-    prop: 'content' | 'toolName' | 'filePath' | 'stepType'
+    prop: 'content' | 'toolName' | 'filePath' | 'stepType',
   ): string | undefined => {
     if (event.type === 'step' && prop in event.data) {
       return event.data[prop]
@@ -94,7 +101,7 @@ export function WorkProgressModal({
         if (filter === 'progress' && event.type !== 'progress') return false
         if (
           ['tool_call', 'file_read', 'file_write', 'shell_command'].includes(
-            filter
+            filter,
           )
         ) {
           if (event.type !== 'step') return false
@@ -106,8 +113,10 @@ export function WorkProgressModal({
       if (searchQuery) {
         const query = searchQuery.toLowerCase()
         const content = getEventProperty(event, 'content')?.toLowerCase() || ''
-        const toolName = getEventProperty(event, 'toolName')?.toLowerCase() || ''
-        const filePath = getEventProperty(event, 'filePath')?.toLowerCase() || ''
+        const toolName =
+          getEventProperty(event, 'toolName')?.toLowerCase() || ''
+        const filePath =
+          getEventProperty(event, 'filePath')?.toLowerCase() || ''
         if (!content && !toolName && !filePath) return false
         if (
           !content.includes(query) &&
@@ -127,8 +136,18 @@ export function WorkProgressModal({
     if (event.type === 'status') {
       return (
         <span className="text-blue-400">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
         </span>
       )
@@ -136,8 +155,18 @@ export function WorkProgressModal({
     if (event.type === 'progress') {
       return (
         <span className="text-slate-400">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+            />
           </svg>
         </span>
       )
@@ -225,17 +254,25 @@ export function WorkProgressModal({
               >
                 {issueTitle}
               </h2>
-              <p className="text-sm text-slate-400 font-mono">
-                {issueId}
-              </p>
+              <p className="text-sm text-slate-400 font-mono">{issueId}</p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -244,24 +281,36 @@ export function WorkProgressModal({
         <div className="flex items-center gap-6 px-6 py-3 border-b border-white/5 bg-slate-950/50">
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">Duration:</span>
-            <span className="text-white font-mono">{formatDuration(sessionStats.duration)}</span>
+            <span className="text-white font-mono">
+              {formatDuration(sessionStats.duration)}
+            </span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">Steps:</span>
-            <span className="text-white font-mono">{sessionStats.totalSteps}</span>
+            <span className="text-white font-mono">
+              {sessionStats.totalSteps}
+            </span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">Tools:</span>
-            <span className="text-violet-400 font-mono">{sessionStats.toolCalls}</span>
+            <span className="text-violet-400 font-mono">
+              {sessionStats.toolCalls}
+            </span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">Files:</span>
-            <span className="text-emerald-400 font-mono">{sessionStats.fileReads}R</span>
-            <span className="text-amber-400 font-mono">{sessionStats.fileWrites}W</span>
+            <span className="text-emerald-400 font-mono">
+              {sessionStats.fileReads}R
+            </span>
+            <span className="text-amber-400 font-mono">
+              {sessionStats.fileWrites}W
+            </span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">Commands:</span>
-            <span className="text-red-400 font-mono">{sessionStats.shellCommands}</span>
+            <span className="text-red-400 font-mono">
+              {sessionStats.shellCommands}
+            </span>
           </div>
           <div className="flex items-center gap-2 text-sm ml-auto">
             <span className="text-slate-500">Status:</span>
@@ -378,7 +427,9 @@ export function WorkProgressModal({
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 mt-0.5">{getEventIcon(event)}</div>
+                      <div className="flex-shrink-0 mt-0.5">
+                        {getEventIcon(event)}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-xs font-medium text-slate-300 truncate">
@@ -409,9 +460,14 @@ export function WorkProgressModal({
                   {/* Event Header */}
                   <div>
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="text-2xl">{getEventIcon(selectedEvent)}</div>
+                      <div className="text-2xl">
+                        {getEventIcon(selectedEvent)}
+                      </div>
                       <div>
-                        <h3 className="text-lg font-semibold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                        <h3
+                          className="text-lg font-semibold text-white"
+                          style={{ fontFamily: 'Outfit, sans-serif' }}
+                        >
                           {getEventLabel(selectedEvent)}
                         </h3>
                         <p className="text-sm text-slate-500 font-mono">
@@ -444,12 +500,27 @@ export function WorkProgressModal({
                             {getEventProperty(selectedEvent, 'toolName')}
                           </p>
                           <button
-                            onClick={() => copyToClipboard(getEventProperty(selectedEvent, 'toolName') || '')}
+                            onClick={() =>
+                              copyToClipboard(
+                                getEventProperty(selectedEvent, 'toolName') ||
+                                  '',
+                              )
+                            }
                             className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
                             title="Copy"
                           >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
                             </svg>
                           </button>
                         </div>
@@ -466,12 +537,27 @@ export function WorkProgressModal({
                             {getEventProperty(selectedEvent, 'filePath')}
                           </p>
                           <button
-                            onClick={() => copyToClipboard(getEventProperty(selectedEvent, 'filePath') || '')}
+                            onClick={() =>
+                              copyToClipboard(
+                                getEventProperty(selectedEvent, 'filePath') ||
+                                  '',
+                              )
+                            }
                             className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors flex-shrink-0"
                             title="Copy"
                           >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
                             </svg>
                           </button>
                         </div>
@@ -488,12 +574,27 @@ export function WorkProgressModal({
                             {getEventProperty(selectedEvent, 'content')}
                           </pre>
                           <button
-                            onClick={() => copyToClipboard(getEventProperty(selectedEvent, 'content') || '')}
+                            onClick={() =>
+                              copyToClipboard(
+                                getEventProperty(selectedEvent, 'content') ||
+                                  '',
+                              )
+                            }
                             className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
                             title="Copy content"
                           >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
                             </svg>
                           </button>
                         </div>

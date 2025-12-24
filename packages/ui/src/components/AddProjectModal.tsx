@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import {
-  addProject,
-  setCurrentProjectId,
-} from '../lib/projects'
+import { addProject, setCurrentProjectId } from '../lib/projects'
 import { DirectoryPicker } from './DirectoryPicker'
 import type { Project } from '../lib/projects'
 
@@ -179,9 +176,7 @@ export function AddProjectModal({
           <button
             onClick={handleAddProject}
             disabled={
-              !newProjectName.trim() ||
-              !newProjectPath.trim() ||
-              isAdding
+              !newProjectName.trim() || !newProjectPath.trim() || isAdding
             }
             className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >

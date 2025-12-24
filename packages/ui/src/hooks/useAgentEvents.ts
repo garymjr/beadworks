@@ -6,7 +6,13 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import type { AgentEvent } from '../lib/api/types'
 
 export interface AgentWorkState {
-  status: 'starting' | 'thinking' | 'working' | 'complete' | 'error' | 'cancelled'
+  status:
+    | 'starting'
+    | 'thinking'
+    | 'working'
+    | 'complete'
+    | 'error'
+    | 'cancelled'
   progress: number
   currentStep: string
   totalSteps?: number
@@ -65,7 +71,9 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
     // If we've exceeded max retries, give up
     if (retryCountRef.current >= MAX_RETRY_ATTEMPTS) {
       console.error('[useAgentEvents] Max retry attempts reached')
-      setConnectionError('Connection failed after multiple attempts. Please refresh to try again.')
+      setConnectionError(
+        'Connection failed after multiple attempts. Please refresh to try again.',
+      )
       return
     }
 
@@ -75,7 +83,9 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
     url.searchParams.set('issue_id', issueId)
 
     const retryNum = retryCountRef.current
-    console.log(`[useAgentEvents] Connecting (attempt ${retryNum + 1}/${MAX_RETRY_ATTEMPTS}) to ${url.toString()}`)
+    console.log(
+      `[useAgentEvents] Connecting (attempt ${retryNum + 1}/${MAX_RETRY_ATTEMPTS}) to ${url.toString()}`,
+    )
 
     const eventSource = new EventSource(url.toString())
     eventSourceRef.current = eventSource
@@ -86,7 +96,7 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
       setConnectionError(null)
       retryCountRef.current = 0 // Reset retry count on successful connection
       lastEventTimeRef.current = Date.now()
-      setState(prev => ({ ...prev, isConnected: true, isActive: true }))
+      setState((prev) => ({ ...prev, isConnected: true, isActive: true }))
     }
 
     eventSource.onmessage = (event) => {
@@ -128,8 +138,12 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
           newState.events = [...prevState.events, data]
 
           // Update computed properties
-          newState.isComplete = newState.status === 'complete' || newState.status === 'error' || newState.status === 'cancelled'
-          newState.isActive = !newState.isComplete && newState.status !== 'cancelled'
+          newState.isComplete =
+            newState.status === 'complete' ||
+            newState.status === 'error' ||
+            newState.status === 'cancelled'
+          newState.isActive =
+            !newState.isComplete && newState.status !== 'cancelled'
 
           return newState
         })
@@ -141,10 +155,13 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
     eventSource.onerror = (error) => {
       console.error('[useAgentEvents] Connection error:', error)
       setIsConnected(false)
-      setState(prev => ({ ...prev, isConnected: false }))
+      setState((prev) => ({ ...prev, isConnected: false }))
 
       // Check if work is actually complete (we might have missed the final event)
-      const workIsComplete = state.status === 'complete' || state.status === 'error' || state.status === 'cancelled'
+      const workIsComplete =
+        state.status === 'complete' ||
+        state.status === 'error' ||
+        state.status === 'cancelled'
 
       if (workIsComplete) {
         console.log('[useAgentEvents] Work is complete, not reconnecting')
@@ -158,17 +175,22 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
       }
 
       // Schedule reconnection with exponential backoff
-      const delay = RETRY_DELAYS[Math.min(retryCountRef.current, RETRY_DELAYS.length - 1)]
+      const delay =
+        RETRY_DELAYS[Math.min(retryCountRef.current, RETRY_DELAYS.length - 1)]
 
       if (retryCountRef.current < MAX_RETRY_ATTEMPTS) {
         retryCountRef.current++
-        setConnectionError(`Connection lost. Reconnecting in ${delay / 1000}s... (attempt ${retryCountRef.current}/${MAX_RETRY_ATTEMPTS})`)
+        setConnectionError(
+          `Connection lost. Reconnecting in ${delay / 1000}s... (attempt ${retryCountRef.current}/${MAX_RETRY_ATTEMPTS})`,
+        )
 
         retryTimeoutRef.current = setTimeout(() => {
           connect()
         }, delay)
       } else {
-        setConnectionError('Connection failed after multiple attempts. The work may have completed - check the issue status.')
+        setConnectionError(
+          'Connection failed after multiple attempts. The work may have completed - check the issue status.',
+        )
       }
     }
   }, [issueId, enabled, state.status])
@@ -223,7 +245,9 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
     const checkInterval = setInterval(() => {
       const timeSinceLastEvent = Date.now() - lastEventTimeRef.current
       if (timeSinceLastEvent > 2 * 60 * 1000) {
-        console.warn('[useAgentEvents] No events for 2 minutes, reconnecting...')
+        console.warn(
+          '[useAgentEvents] No events for 2 minutes, reconnecting...',
+        )
         reconnect()
       }
     }, 30000) // Check every 30 seconds
@@ -236,7 +260,10 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
     isConnected,
     connectionError,
     reconnect,
-    isComplete: state.status === 'complete' || state.status === 'error' || state.status === 'cancelled',
+    isComplete:
+      state.status === 'complete' ||
+      state.status === 'error' ||
+      state.status === 'cancelled',
     isActive: ['starting', 'thinking', 'working'].includes(state.status),
   }
 }

@@ -1,9 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import type {
-  CreateTaskInput,
-  Task,
-  UpdateTaskInput,
-} from './types'
+import type { CreateTaskInput, Task, UpdateTaskInput } from './types'
 
 const API_BASE = process.env.BD_API_URL || 'http://localhost:3001/api/bd'
 

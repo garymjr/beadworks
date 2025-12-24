@@ -20,6 +20,7 @@ import { AddProjectModal } from '../components/AddProjectModal'
 import { AddTaskModal } from '../components/AddTaskModal'
 import { WorkProgressCard } from '../components/WorkProgressCard'
 import { WorkProgressModal } from '../components/WorkProgressModal'
+import { ActiveAgentIndicator } from '../components/ActiveAgentIndicator'
 import { getCurrentProject } from '../lib/projects'
 import type { Task } from '../lib/api/types'
 import type { Project } from '../lib/projects'
@@ -166,6 +167,10 @@ export const Route = createFileRoute('/')({
       typeof search.projectPath === 'string' ? search.projectPath : undefined,
   }),
 })
+
+// Feature flag: Show separate work progress cards above the board
+// Set to false when task cards show their own active agent indicators
+const SHOW_SEPARATE_PROGRESS_CARDS = true
 
 function BeadworksKanban() {
   const router = useRouter()
@@ -1351,7 +1356,16 @@ function BeadworksKanban() {
                                 {task.description && (
                                   <p className="text-sm text-slate-400 leading-relaxed mb-3 line-clamp-2">
                                     {task.description}
-                                  </p>
+                                </p>
+                                )}
+
+                                {/* Active Agent Indicator */}
+                                {activeWorkSessions.has(task.id) && (
+                                  <ActiveAgentIndicator
+                                    issueId={task.id}
+                                    compact={true}
+                                    onClick={() => setModalSessionId(task.id)}
+                                  />
                                 )}
 
                                 {/* Start Work Button (only in ready column) */}

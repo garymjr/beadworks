@@ -229,9 +229,7 @@ export function WorkProgressCard({
                 {startedAt && !workState.isComplete && (
                   <>
                     <span className="text-slate-600">•</span>
-                    <span className="font-mono text-slate-500">
-                      {elapsed}
-                    </span>
+                    <span className="font-mono text-slate-500">{elapsed}</span>
                   </>
                 )}
               </p>
