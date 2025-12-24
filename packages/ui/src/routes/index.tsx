@@ -10,6 +10,7 @@ import {
 import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
 import { ProjectSelector } from '../components/ProjectSelector'
 import { AddProjectModal } from '../components/AddProjectModal'
+import { AddTaskModal } from '../components/AddTaskModal'
 import { getCurrentProject, getProjects } from '../lib/projects'
 import type { Task } from '../lib/api/types'
 import type { Project } from '../lib/projects'
@@ -156,6 +157,7 @@ function BeadworksKanban() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
   const [isUpdating, setIsUpdating] = useState<string | null>(null)
   const [showAddProjectModal, setShowAddProjectModal] = useState(false)
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false)
   const [isInitializing, setIsInitializing] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
 
@@ -482,6 +484,14 @@ function BeadworksKanban() {
           onProjectAdded={handleProjectAdded}
         />
 
+        {/* Add Task Modal */}
+        <AddTaskModal
+          isOpen={showAddTaskModal}
+          onClose={() => setShowAddTaskModal(false)}
+          onTaskCreated={() => router.invalidate()}
+          projectPath={currentProject?.path}
+        />
+
         {/* Custom font imports */}
         <style>
           @import
@@ -709,6 +719,14 @@ function BeadworksKanban() {
           onProjectAdded={handleProjectAdded}
         />
 
+        {/* Add Task Modal */}
+        <AddTaskModal
+          isOpen={showAddTaskModal}
+          onClose={() => setShowAddTaskModal(false)}
+          onTaskCreated={() => router.invalidate()}
+          projectPath={currentProject?.path}
+        />
+
         {/* Custom font imports */}
         <style>
           @import
@@ -785,7 +803,10 @@ function BeadworksKanban() {
                   tasks loaded
                 </span>
               </div>
-              <button className="px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-medium hover:shadow-lg hover:shadow-purple-500/25 transition-all duration-300 hover:scale-105">
+              <button
+                onClick={() => setShowAddTaskModal(true)}
+                className="px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-medium hover:shadow-lg hover:shadow-purple-500/25 transition-all duration-300 hover:scale-105"
+              >
                 + New Task
               </button>
             </div>
@@ -1027,6 +1048,14 @@ function BeadworksKanban() {
         isOpen={showAddProjectModal}
         onClose={() => setShowAddProjectModal(false)}
         onProjectAdded={handleProjectAdded}
+      />
+
+      {/* Add Task Modal */}
+      <AddTaskModal
+        isOpen={showAddTaskModal}
+        onClose={() => setShowAddTaskModal(false)}
+        onTaskCreated={() => router.invalidate()}
+        projectPath={currentProject?.path}
       />
 
       {/* Custom font imports */}
