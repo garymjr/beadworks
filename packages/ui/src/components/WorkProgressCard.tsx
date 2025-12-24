@@ -3,27 +3,52 @@
  * Shows the progress of agent work on an issue
  */
 
+import { useCallback, useEffect, useState } from 'react'
 import { useAgentEvents } from '../hooks/useAgentEvents'
-import { cancelWork, startWork } from '../lib/api/client'
+import { cancelWork } from '../lib/api/client'
 
 interface WorkProgressCardProps {
   issueId: string
   issueTitle: string
   projectPath?: string
+  startedAt?: number
   onComplete?: () => void
   onError?: () => void
   onCancel?: () => void
+  onDismiss?: () => void
+  onClick?: () => void
 }
 
 export function WorkProgressCard({
   issueId,
   issueTitle,
   projectPath,
+  startedAt,
   onComplete,
   onError,
   onCancel,
+  onDismiss,
+  onClick,
 }: WorkProgressCardProps) {
   const workState = useAgentEvents(issueId, true)
+  const [elapsed, setElapsed] = useState('0m 0s')
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!startedAt || workState.isComplete) return
+
+    const updateElapsed = () => {
+      const now = Date.now()
+      const diff = now - startedAt
+      const minutes = Math.floor(diff / 60000)
+      const seconds = Math.floor((diff % 60000) / 1000)
+      setElapsed(`${minutes}m ${seconds}s`)
+    }
+
+    updateElapsed()
+    const interval = setInterval(updateElapsed, 1000)
+    return () => clearInterval(interval)
+  }, [startedAt, workState.isComplete])
 
   const handleCancel = async () => {
     try {
@@ -173,8 +198,21 @@ export function WorkProgressCard({
     }
   }
 
+  const handleDismiss = useCallback(() => {
+    onDismiss?.()
+  }, [onDismiss])
+
+  const handleClick = useCallback(() => {
+    onClick?.()
+  }, [onClick])
+
   return (
-    <div className="bg-slate-900/90 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden shadow-xl">
+    <div
+      className={`group bg-slate-900/90 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden shadow-xl transition-all duration-200 ${
+        onClick ? 'cursor-pointer hover:border-white/20 hover:shadow-lg' : ''
+      }`}
+      onClick={handleClick}
+    >
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/5 bg-white/5">
         <div className="flex items-center justify-between">
@@ -187,15 +225,38 @@ export function WorkProgressCard({
               >
                 {issueTitle}
               </h3>
-              <p className="text-xs text-slate-400">
-                Agent is {getStatusText().toLowerCase()}
+              <p className="text-xs text-slate-400 flex items-center gap-2">
+                <span>Agent is {getStatusText().toLowerCase()}</span>
+                {startedAt && !workState.isComplete && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <span className="font-mono text-slate-500">
+                      {elapsed}
+                    </span>
+                  </>
+                )}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {workState.isComplete && onDismiss && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDismiss()
+                }}
+                className="px-3 py-1.5 rounded-lg bg-slate-500/10 border border-slate-500/20 text-xs font-medium text-slate-400 hover:bg-slate-500/20 hover:border-slate-500/30 transition-all duration-200"
+                title="Dismiss"
+              >
+                Dismiss
+              </button>
+            )}
             {!workState.isComplete && (
               <button
-                onClick={handleCancel}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleCancel()
+                }}
                 className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs font-medium text-red-400 hover:bg-red-500/20 hover:border-red-500/30 transition-all duration-200"
               >
                 Cancel

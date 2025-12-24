@@ -1041,9 +1041,11 @@ function BeadworksKanban() {
                 issueId={session.issueId}
                 issueTitle={session.issueTitle}
                 projectPath={currentProject?.path}
+                startedAt={session.startedAt}
                 onComplete={() => handleWorkComplete(session.issueId)}
                 onError={() => handleWorkError(session.issueId)}
                 onCancel={() => handleWorkCancel(session.issueId)}
+                onDismiss={() => handleWorkComplete(session.issueId)}
               />
             ))}
           </div>
