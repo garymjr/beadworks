@@ -66,13 +66,14 @@ export interface StepEventData {
     | 'file_write'
     | 'shell_command'
     | 'text_delta'
-  content: string
+  content?: string
   toolName?: string
   filePath?: string
 }
 
 export interface ErrorEventData {
   error: string
+  message: string
   recoverable: boolean
   canRetry: boolean
 }
@@ -80,7 +81,7 @@ export interface ErrorEventData {
 export interface CompleteEventData {
   success: boolean
   summary: string
-  filesChanged?: Array<string>
+  filesChanged: Array<string>
   duration: number
 }
 

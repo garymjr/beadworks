@@ -1,9 +1,8 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAgentEvents } from '../hooks/useAgentEvents'
 import {
-  cancelWork,
   checkProjectInitialized,
   cleanupClosedTasks,
   generatePlan,
@@ -11,7 +10,6 @@ import {
   getTasks,
   initProject,
   startWork,
-  updateTask,
   updateTaskStatus,
 } from '../lib/api/client'
 import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
@@ -20,14 +18,9 @@ import { AddProjectModal } from '../components/AddProjectModal'
 import { AddTaskModal } from '../components/AddTaskModal'
 import { WorkProgressCard } from '../components/WorkProgressCard'
 import { WorkProgressModal } from '../components/WorkProgressModal'
-import { getCurrentProject, getProjects } from '../lib/projects'
+import { getCurrentProject } from '../lib/projects'
 import type { Task } from '../lib/api/types'
 import type { Project } from '../lib/projects'
-
-// Search params type for this route
-interface IndexSearch {
-  projectPath?: string
-}
 
 interface Column {
   id: string
@@ -105,23 +98,12 @@ function isSubtask(task: Task): boolean {
   return false
 }
 
-// Helper to get parent task ID from a subtask ID
-function getParentTaskId(subtaskId: string): string {
-  // For IDs like "server-d98.6", return "server-d98"
-  const dotIndex = subtaskId.lastIndexOf('.')
-  if (dotIndex > 0) {
-    return subtaskId.substring(0, dotIndex)
-  }
-  return subtaskId
-}
-
 // Stable empty array reference to avoid infinite re-renders
 const EMPTY_TASKS: Array<Task> = []
 
 // Wrapper component for WorkProgressCard that uses useAgentEvents hook
 function WorkProgressCardWrapper({
   session,
-  projectPath,
   onComplete,
   onError,
   onCancel,
@@ -129,7 +111,6 @@ function WorkProgressCardWrapper({
   onClick,
 }: {
   session: ActiveWorkSession
-  projectPath?: string
   onComplete?: () => void
   onError?: () => void
   onCancel?: () => void
@@ -142,7 +123,6 @@ function WorkProgressCardWrapper({
     <WorkProgressCard
       issueId={session.issueId}
       issueTitle={session.issueTitle}
-      projectPath={projectPath}
       startedAt={session.startedAt}
       onComplete={onComplete}
       onError={onError}
@@ -230,7 +210,7 @@ function BeadworksKanban() {
 
   // Fetch subtask progress for all parent tasks
   useEffect(() => {
-    tasks.forEach(async (task) => {
+    tasks.forEach(async (task: Task) => {
       // Only fetch for parent tasks (not subtasks)
       if (!isSubtask(task)) {
         try {
@@ -258,9 +238,9 @@ function BeadworksKanban() {
     prevTasksRef.current = tasks
 
     setColumns((prev) => {
-      const newCols = prev.map((col) => ({ ...col, tasks: [] }))
+      const newCols = prev.map((col) => ({ ...col, tasks: [] as Array<Task> }))
 
-      tasks.forEach((task) => {
+      tasks.forEach((task: Task) => {
         // Filter out subtasks - they shouldn't show on main board
         // Subtasks are detected by having a parent field OR a dot in their ID
         if (isSubtask(task)) return
@@ -361,7 +341,7 @@ function BeadworksKanban() {
       // Use router navigate to update search params and trigger loader
       router.navigate({
         to: '/',
-        search: project?.path ? { projectPath: project.path } : {},
+        search: { projectPath: project?.path },
       })
     },
     [router],
@@ -756,7 +736,6 @@ function BeadworksKanban() {
               queryKey: ['tasks', search.projectPath],
             })
           }
-          projectPath={currentProject?.path}
         />
 
         {/* Custom font imports */}
@@ -1014,7 +993,7 @@ function BeadworksKanban() {
         {/* Custom font imports */}
         <style>
           @import
-          url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+          url('https://fonts.googleapis.com/css2?family:Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
         </style>
       </div>
     )
@@ -1106,7 +1085,6 @@ function BeadworksKanban() {
               <WorkProgressCardWrapper
                 key={session.issueId}
                 session={session}
-                projectPath={currentProject?.path}
                 onComplete={() => handleWorkComplete(session.issueId)}
                 onError={() => handleWorkError(session.issueId)}
                 onCancel={() => handleWorkCancel(session.issueId)}

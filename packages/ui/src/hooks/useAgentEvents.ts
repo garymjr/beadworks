@@ -11,6 +11,9 @@ export interface AgentWorkState {
   currentStep: string
   totalSteps?: number
   events: AgentEvent[]
+  isComplete: boolean
+  isConnected: boolean
+  isActive: boolean
   error?: {
     message: string
     recoverable: boolean
@@ -29,6 +32,9 @@ const initialState: AgentWorkState = {
   progress: 0,
   currentStep: 'Initializing...',
   events: [],
+  isComplete: false,
+  isConnected: false,
+  isActive: false,
 }
 
 const MAX_RETRY_ATTEMPTS = 5
@@ -80,6 +86,7 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
       setConnectionError(null)
       retryCountRef.current = 0 // Reset retry count on successful connection
       lastEventTimeRef.current = Date.now()
+      setState(prev => ({ ...prev, isConnected: true, isActive: true }))
     }
 
     eventSource.onmessage = (event) => {
@@ -120,6 +127,10 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
           // Add event to history
           newState.events = [...prevState.events, data]
 
+          // Update computed properties
+          newState.isComplete = newState.status === 'complete' || newState.status === 'error' || newState.status === 'cancelled'
+          newState.isActive = !newState.isComplete && newState.status !== 'cancelled'
+
           return newState
         })
       } catch (err) {
@@ -130,6 +141,7 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
     eventSource.onerror = (error) => {
       console.error('[useAgentEvents] Connection error:', error)
       setIsConnected(false)
+      setState(prev => ({ ...prev, isConnected: false }))
 
       // Check if work is actually complete (we might have missed the final event)
       const workIsComplete = state.status === 'complete' || state.status === 'error' || state.status === 'cancelled'

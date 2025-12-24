@@ -7,6 +7,7 @@ interface DirectoryPickerProps {
   onNameExtracted?: (name: string) => void
   placeholder?: string
   className?: string
+  disabled?: boolean
 }
 
 export function DirectoryPicker({
@@ -15,6 +16,7 @@ export function DirectoryPicker({
   onNameExtracted,
   placeholder = '/Users/username/projects/my-project',
   className = '',
+  disabled = false,
 }: DirectoryPickerProps) {
   const [isLoading, setIsLoading] = useState(false)
 
@@ -90,6 +92,8 @@ export function DirectoryPicker({
     }
   }
 
+  const isDisabled = disabled || isLoading
+
   return (
     <div className={className}>
       <div className="flex gap-2">
@@ -100,13 +104,13 @@ export function DirectoryPicker({
           placeholder={placeholder}
           className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all disabled:opacity-50"
           style={{ fontFamily: 'JetBrains Mono, monospace' }}
-          disabled={isLoading}
+          disabled={isDisabled}
         />
         <button
           onClick={handleDirectoryPicker}
-          disabled={isLoading}
+          disabled={isDisabled}
           className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group relative disabled:opacity-50 disabled:cursor-not-allowed"
-          title={isLoading ? 'Loading...' : 'Browse for project directory'}
+          title={isDisabled ? 'Loading...' : 'Browse for project directory'}
         >
           {isLoading ? (
             <svg
@@ -134,9 +138,9 @@ export function DirectoryPicker({
         </button>
         <button
           onClick={handleAutoDetect}
-          disabled={isLoading}
+          disabled={isDisabled}
           className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group relative disabled:opacity-50 disabled:cursor-not-allowed"
-          title={isLoading ? 'Loading...' : 'Auto-detect from terminal'}
+          title={isDisabled ? 'Loading...' : 'Auto-detect from terminal'}
         >
           <Terminal className="w-5 h-5 text-slate-400 group-hover:text-slate-300 transition-colors" />
         </button>
@@ -156,7 +160,7 @@ async function findBeadsDirectory(
 ): Promise<{ fullPath: string; folderName: string }> {
   // Check if current directory has .beads
   try {
-    const beadsHandle = await dirHandle.getDirectoryHandle('.beads', {
+    await dirHandle.getDirectoryHandle('.beads', {
       create: false,
     })
     // Found .beads directory - this is the project root
@@ -175,7 +179,11 @@ async function findBeadsDirectory(
   }
 
   try {
-    for await (const entry of dirHandle.values()) {
+    // Iterate through directory entries
+    // Note: TypeScript types may not have full File System Access API support
+    // Using type assertion to access the iterator
+    const dirHandleAny = dirHandle as any
+    for await (const entry of dirHandleAny.values()) {
       if (entry.kind === 'directory') {
         const subPath = currentPath
           ? `${currentPath}/${entry.name}`

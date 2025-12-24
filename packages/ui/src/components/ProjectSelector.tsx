@@ -8,9 +8,6 @@ import {
 } from '../lib/projects'
 import type { Project } from '../lib/projects'
 
-// Check if we're on the client side
-const isClient = typeof window !== 'undefined'
-
 interface ProjectSelectorProps {
   onProjectChange?: (project: Project | null) => void
   onAddProjectClick?: () => void

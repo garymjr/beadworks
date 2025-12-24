@@ -10,7 +10,6 @@ import { cancelWork } from '../lib/api/client'
 interface WorkProgressCardProps {
   issueId: string
   issueTitle: string
-  projectPath?: string
   startedAt?: number
   workState: AgentWorkState
   onComplete?: () => void
@@ -23,7 +22,6 @@ interface WorkProgressCardProps {
 export function WorkProgressCard({
   issueId,
   issueTitle,
-  projectPath,
   startedAt,
   workState,
   onComplete,

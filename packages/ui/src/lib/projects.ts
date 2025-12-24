@@ -14,10 +14,6 @@ export interface Project {
   createdAt: string
 }
 
-interface ProjectSettings {
-  currentProjectId: string | null
-}
-
 const STORAGE_KEY = 'beadworks-current-project'
 
 // ============================================================================

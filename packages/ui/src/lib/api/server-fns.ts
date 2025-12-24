@@ -2,7 +2,6 @@ import { createServerFn } from '@tanstack/react-start'
 import type {
   CreateTaskInput,
   Task,
-  TaskFilters,
   UpdateTaskInput,
 } from './types'
 

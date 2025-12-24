@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { AgentEvent, AgentWorkState } from '../hooks/useAgentEvents'
+import type { AgentEvent } from '../lib/api/types'
+import type { AgentWorkState } from '../hooks/useAgentEvents'
 
 interface WorkProgressModalProps {
   isOpen: boolean
@@ -73,6 +74,17 @@ export function WorkProgressModal({
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
   }
 
+  // Helper to safely extract optional properties from event data
+  const getEventProperty = (
+    event: AgentEvent,
+    prop: 'content' | 'toolName' | 'filePath' | 'stepType'
+  ): string | undefined => {
+    if (event.type === 'step' && prop in event.data) {
+      return event.data[prop]
+    }
+    return undefined
+  }
+
   // Filter events
   const filteredEvents = useMemo(() => {
     return workState.events.filter((event) => {
@@ -93,9 +105,9 @@ export function WorkProgressModal({
       // Apply search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase()
-        const content = event.data.content?.toLowerCase() || ''
-        const toolName = event.data.toolName?.toLowerCase() || ''
-        const filePath = event.data.filePath?.toLowerCase() || ''
+        const content = getEventProperty(event, 'content')?.toLowerCase() || ''
+        const toolName = getEventProperty(event, 'toolName')?.toLowerCase() || ''
+        const filePath = getEventProperty(event, 'filePath')?.toLowerCase() || ''
         if (!content && !toolName && !filePath) return false
         if (
           !content.includes(query) &&
@@ -154,11 +166,11 @@ export function WorkProgressModal({
     if (event.type === 'step') {
       switch (event.data.stepType) {
         case 'tool_call':
-          return `Tool: ${event.data.toolName || 'unknown'}`
+          return `Tool: ${getEventProperty(event, 'toolName') || 'unknown'}`
         case 'file_read':
-          return `Read: ${event.data.filePath || 'unknown'}`
+          return `Read: ${getEventProperty(event, 'filePath') || 'unknown'}`
         case 'file_write':
-          return `Write: ${event.data.filePath || 'unknown'}`
+          return `Write: ${getEventProperty(event, 'filePath') || 'unknown'}`
         case 'shell_command':
           return 'Shell Command'
         default:
@@ -376,9 +388,9 @@ export function WorkProgressModal({
                             {new Date(event.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
-                        {event.data.content && (
+                        {getEventProperty(event, 'content') && (
                           <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                            {event.data.content}
+                            {getEventProperty(event, 'content')}
                           </p>
                         )}
                       </div>
@@ -411,28 +423,28 @@ export function WorkProgressModal({
 
                   {/* Event Data */}
                   <div className="space-y-4">
-                    {selectedEvent.data.stepType && (
+                    {getEventProperty(selectedEvent, 'stepType') && (
                       <div>
                         <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
                           Step Type
                         </label>
                         <p className="text-sm text-white font-mono mt-1">
-                          {selectedEvent.data.stepType}
+                          {getEventProperty(selectedEvent, 'stepType')}
                         </p>
                       </div>
                     )}
 
-                    {selectedEvent.data.toolName && (
+                    {getEventProperty(selectedEvent, 'toolName') && (
                       <div>
                         <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
                           Tool Name
                         </label>
                         <div className="flex items-center gap-2 mt-1">
                           <p className="text-sm text-white font-mono">
-                            {selectedEvent.data.toolName}
+                            {getEventProperty(selectedEvent, 'toolName')}
                           </p>
                           <button
-                            onClick={() => copyToClipboard(selectedEvent.data.toolName || '')}
+                            onClick={() => copyToClipboard(getEventProperty(selectedEvent, 'toolName') || '')}
                             className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
                             title="Copy"
                           >
@@ -444,17 +456,17 @@ export function WorkProgressModal({
                       </div>
                     )}
 
-                    {selectedEvent.data.filePath && (
+                    {getEventProperty(selectedEvent, 'filePath') && (
                       <div>
                         <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
                           File Path
                         </label>
                         <div className="flex items-center gap-2 mt-1">
                           <p className="text-sm text-emerald-400 font-mono break-all">
-                            {selectedEvent.data.filePath}
+                            {getEventProperty(selectedEvent, 'filePath')}
                           </p>
                           <button
-                            onClick={() => copyToClipboard(selectedEvent.data.filePath || '')}
+                            onClick={() => copyToClipboard(getEventProperty(selectedEvent, 'filePath') || '')}
                             className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors flex-shrink-0"
                             title="Copy"
                           >
@@ -466,17 +478,17 @@ export function WorkProgressModal({
                       </div>
                     )}
 
-                    {selectedEvent.data.content && (
+                    {getEventProperty(selectedEvent, 'content') && (
                       <div>
                         <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
                           Content
                         </label>
                         <div className="relative mt-1">
                           <pre className="p-3 rounded-lg bg-slate-950 border border-white/10 text-xs text-slate-300 font-mono overflow-x-auto whitespace-pre-wrap">
-                            {selectedEvent.data.content}
+                            {getEventProperty(selectedEvent, 'content')}
                           </pre>
                           <button
-                            onClick={() => copyToClipboard(selectedEvent.data.content || '')}
+                            onClick={() => copyToClipboard(getEventProperty(selectedEvent, 'content') || '')}
                             className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
                             title="Copy content"
                           >
