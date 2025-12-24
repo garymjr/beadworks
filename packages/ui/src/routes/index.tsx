@@ -33,6 +33,13 @@ interface Column {
   tasks: Array<Task>
 }
 
+// Interface for tracking active work sessions
+interface ActiveWorkSession {
+  issueId: string
+  issueTitle: string
+  startedAt: number
+}
+
 // Bead colors for visual variety
 const BEAD_COLORS = [
   '#ff6b6b',
@@ -231,9 +238,10 @@ function BeadworksKanban() {
   const [subtaskProgress, setSubtaskProgress] = useState<
     Record<string, { total: number; completed: number; percent: number }>
   >({})
-  const [activeWorkIssueId, setActiveWorkIssueId] = useState<string | null>(
-    null,
-  )
+  // Track multiple active work sessions
+  const [activeWorkSessions, setActiveWorkSessions] = useState<
+    Map<string, ActiveWorkSession>
+  >(new Map())
   const [startingWork, setStartingWork] = useState<string | null>(null)
 
   // Track current project - initialize safely for SSR
@@ -405,7 +413,15 @@ function BeadworksKanban() {
         project_path: currentProject?.path,
       })
       if (result.success) {
-        setActiveWorkIssueId(taskId)
+        // Find the task title from columns
+        const task = columns.flatMap((col) => col.tasks).find((t) => t.id === taskId)
+        const newSession: ActiveWorkSession = {
+          issueId: taskId,
+          issueTitle: task?.title || 'Unknown Issue',
+          startedAt: Date.now(),
+        }
+        // Add new session without removing existing ones
+        setActiveWorkSessions((prev) => new Map(prev).set(taskId, newSession))
       }
     } catch (error) {
       console.error('Failed to start work:', error)
@@ -414,18 +430,30 @@ function BeadworksKanban() {
     }
   }
 
-  const handleWorkComplete = () => {
-    setActiveWorkIssueId(null)
+  const handleWorkComplete = (taskId: string) => {
+    setActiveWorkSessions((prev) => {
+      const next = new Map(prev)
+      next.delete(taskId)
+      return next
+    })
     router.invalidate()
   }
 
-  const handleWorkError = () => {
-    setActiveWorkIssueId(null)
+  const handleWorkError = (taskId: string) => {
+    setActiveWorkSessions((prev) => {
+      const next = new Map(prev)
+      next.delete(taskId)
+      return next
+    })
     router.invalidate()
   }
 
-  const handleWorkCancel = () => {
-    setActiveWorkIssueId(null)
+  const handleWorkCancel = (taskId: string) => {
+    setActiveWorkSessions((prev) => {
+      const next = new Map(prev)
+      next.delete(taskId)
+      return next
+    })
     router.invalidate()
   }
 
@@ -1003,23 +1031,21 @@ function BeadworksKanban() {
         </div>
       </header>
 
-      {/* Agent Work Progress Card */}
-      {activeWorkIssueId && (
+      {/* Agent Work Progress Cards (Multiple) */}
+      {activeWorkSessions.size > 0 && (
         <main className="relative z-10 px-6 pt-4">
-          <div className="max-w-[1800px] mx-auto">
-            <WorkProgressCard
-              issueId={activeWorkIssueId}
-              issueTitle={
-                columns
-                  .flatMap((col) => col.tasks)
-                  .find((t) => t.id === activeWorkIssueId)?.title ||
-                'Unknown Issue'
-              }
-              projectPath={currentProject?.path}
-              onComplete={handleWorkComplete}
-              onError={handleWorkError}
-              onCancel={handleWorkCancel}
-            />
+          <div className="max-w-[1800px] mx-auto space-y-3">
+            {Array.from(activeWorkSessions.values()).map((session) => (
+              <WorkProgressCard
+                key={session.issueId}
+                issueId={session.issueId}
+                issueTitle={session.issueTitle}
+                projectPath={currentProject?.path}
+                onComplete={() => handleWorkComplete(session.issueId)}
+                onError={() => handleWorkError(session.issueId)}
+                onCancel={() => handleWorkCancel(session.issueId)}
+              />
+            ))}
           </div>
         </main>
       )}
@@ -1198,10 +1224,7 @@ function BeadworksKanban() {
                                 {column.id === 'ready' && (
                                   <button
                                     onClick={() => handleStartWork(task.id)}
-                                    disabled={
-                                      startingWork === task.id ||
-                                      activeWorkIssueId !== null
-                                    }
+                                    disabled={startingWork === task.id}
                                     className="w-full mb-3 px-3 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                   >
                                     {startingWork === task.id ? (
