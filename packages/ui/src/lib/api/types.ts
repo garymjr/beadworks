@@ -20,6 +20,12 @@ export interface Task {
   closed_at?: string
   dependency_count?: number
   dependent_count?: number
+  // Subtask progress info (when this task is a parent)
+  subtaskProgress?: {
+    total: number
+    completed: number
+    percent: number
+  }
 }
 
 export interface CreateTaskInput {

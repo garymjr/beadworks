@@ -319,7 +319,7 @@ export async function getLabels(dbPath?: string) {
  * Add comment to issue
  */
 export async function addComment(id: string, comment: string, dbPath?: string) {
-  return execBdCommand(["comment", id, "--message", comment], dbPath);
+  return execBdCommand(["comment", id, comment], dbPath);
 }
 
 /**

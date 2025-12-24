@@ -2,11 +2,14 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  getTasks,
-  updateTaskStatus,
   checkProjectInitialized,
-  initProject,
   cleanupClosedTasks,
+  generatePlan,
+  getSubtasks,
+  getTasks,
+  initProject,
+  updateTask,
+  updateTaskStatus,
 } from '../lib/api/client'
 import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
 import { ProjectSelector } from '../components/ProjectSelector'
@@ -144,7 +147,17 @@ function BeadworksKanban() {
       const newCols = prev.map((col) => ({ ...col, tasks: [] }))
 
       tasks.forEach((task) => {
-        const columnId = STATUS_COLUMN_MAP[task.status] || 'todo'
+        // Filter out subtasks (tasks that have a parent) - they shouldn't show on main board
+        if (task.parent) return
+
+        // Determine the column for this task
+        let columnId = STATUS_COLUMN_MAP[task.status] || 'todo'
+
+        // Special case: open tasks with ai-plan-generated label go to ready column
+        if (task.status === 'open' && task.labels?.includes('ai-plan-generated')) {
+          columnId = 'ready'
+        }
+
         const colIndex = newCols.findIndex((c) => c.id === columnId)
         if (colIndex !== -1) {
           newCols[colIndex].tasks.push(task)
@@ -153,16 +166,35 @@ function BeadworksKanban() {
 
       return newCols
     })
-  }, [tasks])
+
+    // Fetch subtask progress for tasks that have AI-generated plans
+    tasks.forEach(async (task) => {
+      if (task.labels?.includes('ai-plan-generated') && !task.parent) {
+        try {
+          const result = await getSubtasks(task.id, search.projectPath)
+          setSubtaskProgress((prev) => ({
+            ...prev,
+            [task.id]: result.progress,
+          }))
+        } catch (e) {
+          console.error('Failed to fetch subtask progress:', e)
+        }
+      }
+    })
+  }, [tasks, search.projectPath])
 
   const [draggedTask, setDraggedTask] = useState<Task | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
   const [isUpdating, setIsUpdating] = useState<string | null>(null)
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState<string | null>(null)
   const [showAddProjectModal, setShowAddProjectModal] = useState(false)
   const [showAddTaskModal, setShowAddTaskModal] = useState(false)
   const [isInitializing, setIsInitializing] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
   const [isCleaningUp, setIsCleaningUp] = useState(false)
+  const [subtaskProgress, setSubtaskProgress] = useState<
+    Record<string, { total: number; completed: number; percent: number }>
+  >({})
 
   // Track current project - initialize safely for SSR
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
@@ -232,6 +264,11 @@ function BeadworksKanban() {
     const newStatus = COLUMN_STATUS_MAP[targetColumnId]
     if (!newStatus) return
 
+    // Check if this is a move to "ready" for a task without a plan yet
+    const needsPlanGeneration =
+      targetColumnId === 'ready' &&
+      !draggedTask.labels?.includes('ai-plan-generated')
+
     // Optimistically update UI
     setColumns((prev) => {
       return prev.map((col) => {
@@ -259,11 +296,28 @@ function BeadworksKanban() {
     // Update backend
     try {
       setIsUpdating(draggedTask.id)
+
+      // Update the status first
       await updateTaskStatus({
         id: draggedTask.id,
         status: newStatus,
         projectPath: currentProject?.path,
       })
+
+      // Generate the plan BEFORE adding the label (to avoid race condition)
+      if (needsPlanGeneration) {
+        try {
+          setIsGeneratingPlan(draggedTask.id)
+          console.log('Generating plan for task:', draggedTask.id)
+          await generatePlan(draggedTask.id, currentProject?.path)
+        } catch (planError) {
+          console.error('Failed to generate plan:', planError)
+          // Don't fail the status update if plan generation fails
+        } finally {
+          setIsGeneratingPlan(null)
+        }
+      }
+
       // Invalidate loader to refresh data
       router.invalidate()
     } catch (error) {
@@ -507,7 +561,11 @@ function BeadworksKanban() {
         <AddTaskModal
           isOpen={showAddTaskModal}
           onClose={() => setShowAddTaskModal(false)}
-          onTaskCreated={() => queryClient.invalidateQueries({ queryKey: ['tasks', search.projectPath] })}
+          onTaskCreated={() =>
+            queryClient.invalidateQueries({
+              queryKey: ['tasks', search.projectPath],
+            })
+          }
           projectPath={currentProject?.path}
         />
 
@@ -620,7 +678,8 @@ function BeadworksKanban() {
               Project Not Initialized
             </h2>
             <p className="text-lg text-slate-400 mb-8 leading-relaxed">
-              This project doesn't have a <code className="text-violet-400">.beads</code> database yet.
+              This project doesn't have a{' '}
+              <code className="text-violet-400">.beads</code> database yet.
               Initialize it to start tracking tasks and issues.
             </p>
 
@@ -650,8 +709,14 @@ function BeadworksKanban() {
                     What happens when you initialize?
                   </h3>
                   <p className="text-sm text-slate-400 leading-relaxed">
-                    A <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">.beads</code> folder
-                    will be created in <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">{currentProject?.path || 'your project directory'}</code>{' '}
+                    A{' '}
+                    <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">
+                      .beads
+                    </code>{' '}
+                    folder will be created in{' '}
+                    <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">
+                      {currentProject?.path || 'your project directory'}
+                    </code>{' '}
                     with a local database to track your issues.
                   </p>
                 </div>
@@ -701,7 +766,11 @@ function BeadworksKanban() {
             </button>
 
             <p className="text-sm text-slate-500 mt-6">
-              Or run <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">bd init</code> in your terminal
+              Or run{' '}
+              <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">
+                bd init
+              </code>{' '}
+              in your terminal
             </p>
           </div>
         </main>
@@ -715,7 +784,9 @@ function BeadworksKanban() {
             >
               <div className="flex items-center gap-6">
                 <span className="text-slate-500">
-                  <span className={error ? 'text-red-400' : 'text-amber-400'}>●</span>{' '}
+                  <span className={error ? 'text-red-400' : 'text-amber-400'}>
+                    ●
+                  </span>{' '}
                   {error ? 'Error Loading Project' : 'Needs Initialization'}
                 </span>
                 {error && <span className="text-red-400">{error.message}</span>}
@@ -742,7 +813,11 @@ function BeadworksKanban() {
         <AddTaskModal
           isOpen={showAddTaskModal}
           onClose={() => setShowAddTaskModal(false)}
-          onTaskCreated={() => queryClient.invalidateQueries({ queryKey: ['tasks', search.projectPath] })}
+          onTaskCreated={() =>
+            queryClient.invalidateQueries({
+              queryKey: ['tasks', search.projectPath],
+            })
+          }
           projectPath={currentProject?.path}
         />
 
@@ -936,10 +1011,11 @@ function BeadworksKanban() {
 
                   {/* Bead track */}
                   <div
-                    className={`relative min-h-[500px] p-4 rounded-2xl border-2 transition-all duration-300 ${dragOverColumn === column.id
+                    className={`relative min-h-[500px] p-4 rounded-2xl border-2 transition-all duration-300 ${
+                      dragOverColumn === column.id
                         ? 'bg-white/5 border-violet-500/50 shadow-lg shadow-violet-500/10'
                         : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.03]'
-                      }`}
+                    }`}
                     onDragOver={(e) => handleDragOver(e, column.id)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, column.id)}
@@ -959,11 +1035,12 @@ function BeadworksKanban() {
                             draggable
                             onDragStart={() => handleDragStart(task)}
                             onDragEnd={handleDragEnd}
-                            className={`group relative cursor-grab active:cursor-grabbing transition-all duration-300 ${draggedTask?.id === task.id ||
-                                isUpdating === task.id
+                            className={`group relative cursor-grab active:cursor-grabbing transition-all duration-300 ${
+                              draggedTask?.id === task.id ||
+                              isUpdating === task.id
                                 ? 'opacity-50 scale-95'
                                 : 'hover:scale-[1.02]'
-                              }`}
+                            }`}
                           >
                             {/* Glow effect */}
                             <div
@@ -1027,12 +1104,13 @@ function BeadworksKanban() {
                                 {/* Priority indicator */}
                                 <div className="flex items-center gap-2">
                                   <div
-                                    className={`w-2 h-2 rounded-full ${priority === 'high'
+                                    className={`w-2 h-2 rounded-full ${
+                                      priority === 'high'
                                         ? 'bg-red-400'
                                         : priority === 'medium'
                                           ? 'bg-yellow-400'
                                           : 'bg-emerald-400'
-                                      }`}
+                                    }`}
                                   />
                                   <span className="text-xs text-slate-500 capitalize">
                                     {priority} priority
@@ -1045,7 +1123,81 @@ function BeadworksKanban() {
                                       </span>
                                     </>
                                   )}
+
+                                  {/* Plan generation indicator */}
+                                  {isGeneratingPlan === task.id && (
+                                    <>
+                                      <span className="text-slate-600">•</span>
+                                      <span className="text-xs text-violet-400 flex items-center gap-1">
+                                        <svg
+                                          className="w-3 h-3 animate-spin"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <circle
+                                            className="opacity-25"
+                                            cx="12"
+                                            cy="12"
+                                            r="10"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                          />
+                                          <path
+                                            className="opacity-75"
+                                            fill="currentColor"
+                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                          />
+                                        </svg>
+                                        Generating plan
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
+
+                                {/* Subtask progress bar */}
+                                {subtaskProgress[task.id] &&
+                                  subtaskProgress[task.id].total > 0 && (
+                                    <div className="mt-3 pt-3 border-t border-white/5">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <span className="text-xs text-slate-400">
+                                          Subtasks
+                                        </span>
+                                        <span className="text-xs text-slate-400">
+                                          {subtaskProgress[task.id].completed} /{' '}
+                                          {subtaskProgress[task.id].total}
+                                        </span>
+                                      </div>
+                                      <div className="relative h-2 bg-slate-800 rounded-full overflow-hidden">
+                                        <div
+                                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
+                                          style={{
+                                            width: `${subtaskProgress[task.id].percent}%`,
+                                          }}
+                                        />
+                                      </div>
+                                      {subtaskProgress[task.id].percent ===
+                                        100 && (
+                                        <div className="flex items-center gap-1 mt-1.5">
+                                          <svg
+                                            className="w-3 h-3 text-emerald-400"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M5 13l4 4L19 7"
+                                            />
+                                          </svg>
+                                          <span className="text-xs text-emerald-400">
+                                            All subtasks completed
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                               </div>
                             </div>
                           </div>
@@ -1125,7 +1277,11 @@ function BeadworksKanban() {
       <AddTaskModal
         isOpen={showAddTaskModal}
         onClose={() => setShowAddTaskModal(false)}
-        onTaskCreated={() => queryClient.invalidateQueries({ queryKey: ['tasks', search.projectPath] })}
+        onTaskCreated={() =>
+          queryClient.invalidateQueries({
+            queryKey: ['tasks', search.projectPath],
+          })
+        }
         projectPath={currentProject?.path}
       />
 

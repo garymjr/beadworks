@@ -100,10 +100,7 @@ export async function getTasks(projectPath?: string) {
 /**
  * Create a new task
  */
-export async function createTask(
-  input: any,
-  projectPath?: string,
-) {
+export async function createTask(input: any, projectPath?: string) {
   return fetchFromAPI(
     '/issues',
     {
@@ -117,11 +114,7 @@ export async function createTask(
 /**
  * Update a task
  */
-export async function updateTask(
-  id: string,
-  input: any,
-  projectPath?: string,
-) {
+export async function updateTask(id: string, input: any, projectPath?: string) {
   return fetchFromAPI(
     `/issues/${id}`,
     {
@@ -198,6 +191,13 @@ export async function deleteTask(id: string, projectPath?: string) {
 // ============================================================================
 
 /**
+ * Get subtasks for a parent task
+ */
+export async function getSubtasks(id: string, projectPath?: string) {
+  return fetchFromAPI(`/issues/${id}/subtasks`, undefined, projectPath)
+}
+
+/**
  * Add a comment to a task
  */
 export async function addComment(
@@ -245,9 +245,13 @@ export async function removeDependency(
   depId: string,
   projectPath?: string,
 ) {
-  return fetchFromAPI(`/issues/${id}/deps/${depId}`, {
-    method: 'DELETE',
-  }, projectPath)
+  return fetchFromAPI(
+    `/issues/${id}/deps/${depId}`,
+    {
+      method: 'DELETE',
+    },
+    projectPath,
+  )
 }
 
 // ============================================================================
@@ -321,6 +325,20 @@ export async function getRepos(projectPath?: string) {
 // ============================================================================
 // AI-powered task generation
 // ============================================================================
+
+/**
+ * Generate a plan with subtasks for an issue using the pi-agent
+ */
+export async function generatePlan(issueId: string, projectPath?: string) {
+  return fetchFromAPI(
+    '/generate-plan',
+    {
+      method: 'POST',
+      body: JSON.stringify({ issue_id: issueId, project_path: projectPath }),
+    },
+    undefined, // Don't add project_path as query param since it's in body
+  )
+}
 
 /**
  * Generate title and labels from a description using the pi-agent

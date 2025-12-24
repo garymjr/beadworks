@@ -328,6 +328,35 @@ bdRoutes.get("/search", async (c) => {
 });
 
 /**
+ * GET /api/bd/issues/:id/subtasks
+ * Get subtasks for a parent issue
+ */
+bdRoutes.get("/issues/:id/subtasks", async (c) => {
+  const dbPath = getDbPath(c);
+  const id = c.req.param("id");
+  try {
+    // Get all issues and filter by parent
+    const allIssues = await bd.listIssues(undefined, dbPath);
+    const subtasks = allIssues.filter((issue: any) => issue.parent === id);
+
+    // Calculate progress
+    const total = subtasks.length;
+    const completed = subtasks.filter((st: any) => st.status === "closed").length;
+
+    return c.json({
+      subtasks,
+      progress: {
+        total,
+        completed,
+        percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+      },
+    });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 400);
+  }
+});
+
+/**
  * GET /api/bd/blocked
  * Get blocked issues
  */
@@ -470,6 +499,212 @@ bdRoutes.get("/repos", async (c) => {
 // ============================================================================
 // AI-powered task generation
 // ============================================================================
+
+/**
+ * POST /api/bd/generate-plan
+ * Generate a plan with subtasks for an issue using the pi-agent
+ */
+const generatePlanSchema = z.object({
+  issue_id: z.string().min(1, "Issue ID is required"),
+  project_path: z.string().optional(),
+});
+
+bdRoutes.post("/generate-plan", zValidator("json", generatePlanSchema), async (c) => {
+  const { issue_id, project_path } = c.req.valid("json");
+
+  try {
+    // Import pi-agent
+    const { getPiAgentSession } = await import("../lib/pi-agent.js");
+    const session = getPiAgentSession();
+
+    if (!session) {
+      return c.json({ error: "Pi-agent session not initialized" }, 500);
+    }
+
+    // Get the issue details
+    const issueResult = await bd.showIssue(issue_id, project_path);
+    if (!issueResult) {
+      return c.json({ error: "Issue not found" }, 404);
+    }
+
+    // bd.showIssue returns an array, get the first element
+    const issue = Array.isArray(issueResult) ? issueResult[0] : issueResult;
+
+    // Log the issue for debugging
+    console.log(`[generate-plan] Issue data:`, JSON.stringify(issue, null, 2));
+
+    // Extract issue properties safely
+    const issueTitle = issue.title || issue.Title || issue.subject || "Unknown Issue";
+    const issueDescription = issue.description || issue.Description || issue.body || issue.content || "";
+    const issueType = issue.type || issue.issue_type || issue.Type || "task";
+    const issueLabels = issue.labels || issue.Labels || [];
+
+    // Check if the issue already has an AI-generated plan
+    const hasPlanLabel = issueLabels.includes("ai-plan-generated");
+    if (hasPlanLabel) {
+      return c.json({ error: "Plan already generated for this issue", issue }, 400);
+    }
+
+    // Get existing comments to check for AI-generated plan
+    try {
+      const comments = await bd.getComments(issue_id, project_path);
+      const hasPlanComment = comments?.some((comment: any) =>
+        comment.content?.includes("🤖 AI-Generated Plan")
+      );
+      if (hasPlanComment) {
+        return c.json({ error: "Plan already generated for this issue", issue }, 400);
+      }
+    } catch (e) {
+      // No comments or error getting comments - proceed
+    }
+
+    // Create a prompt to generate a plan with subtasks
+    const prompt = `You are a senior software engineer and technical lead. Your job is to break down the following issue into concrete implementation steps.
+
+THE ISSUE TO IMPLEMENT:
+Title: ${issueTitle}
+Description: ${issueDescription || "No description"}
+Type: ${issueType}
+Labels: ${issueLabels.join(", ") || "none"}
+
+IMPORTANT CONTEXT:
+- This is a REAL issue that needs to be IMPLEMENTED
+- Do NOT generate tasks about "planning" or "creating subtasks"
+- Generate ACTUAL implementation steps that a developer would execute
+- Each subtask should represent actual code to write, tests to write, or files to modify
+
+Break this down into 3-8 specific implementation steps. Think about:
+- What files need to be created or modified?
+- What functions or components need to be written?
+- What tests need to be added?
+- Are there any configuration changes needed?
+- Should there be a data migration or schema change?
+- What about error handling and edge cases?
+
+Respond with a JSON object in the following format (no markdown, no explanation):
+{
+  "plan": "Brief technical approach (2-3 sentences explaining the overall strategy)",
+  "subtasks": [
+    {
+      "title": "Implementation step title (e.g., 'Create user authentication API endpoint' or 'Add error handling to payment processor')",
+      "description": "Specific technical details - what files to modify, what functions to create, etc.",
+      "type": "task|bug|chore"
+    }
+  ],
+  "risks": ["Potential technical risks, edge cases to consider, or things that might go wrong"]
+}
+
+EXAMPLE OF GOOD SUBTASKS:
+- "Create REST API endpoint for user registration" → "Add POST /api/users/register route in src/routes/users.ts. Implement input validation, password hashing with bcrypt, and user creation. Return 201 with user object or 400 for validation errors."
+- "Add unit tests for payment processing" → "Create test file src/services/payment.test.ts. Add tests for successful payment, failed payment, and edge cases like insufficient funds. Use jest mock for Stripe API."
+
+EXAMPLE OF BAD SUBTASKS (avoid these):
+- "Create subtasks for this issue"
+- "Plan the implementation approach"
+- "Research the best way to implement"
+
+Remember: These are REAL implementation steps. Each subtask should be something a developer sits down and codes.
+
+Respond ONLY with the JSON object, nothing else.`;
+
+    // Subscribe to capture the response
+    let fullResponse = "";
+    let agentComplete = false;
+
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === "message_update") {
+        const msgEvent = event.assistantMessageEvent;
+        if (msgEvent.type === "text_delta") {
+          fullResponse += msgEvent.delta;
+        }
+      } else if (event.type === "agent_end") {
+        agentComplete = true;
+      }
+    });
+
+    // Send prompt and wait for response
+    await session.prompt(prompt);
+
+    // Wait for the agent to complete processing
+    const maxWaitTime = 60000; // 60 seconds max for plan generation
+    const startTime = Date.now();
+    while (!agentComplete && Date.now() - startTime < maxWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    unsubscribe();
+
+    if (!agentComplete) {
+      console.warn("Agent did not complete in time, using partial response");
+    }
+
+    // Try to parse the response as JSON
+    let parsed;
+    try {
+      // Clean up the response - remove any markdown code blocks
+      const cleaned = fullResponse
+        .replace(/```json\s*/g, "")
+        .replace(/```\s*/g, "")
+        .trim();
+
+      parsed = JSON.parse(cleaned);
+    } catch (parseError) {
+      console.error("Failed to parse AI response:", fullResponse);
+      return c.json({ error: "Failed to generate plan - AI response could not be parsed" }, 500);
+    }
+
+    // Add the plan as a comment
+    const planComment = `🤖 AI-Generated Plan
+
+${parsed.plan || "No plan summary provided"}
+
+**Subtasks:**
+${parsed.subtasks?.map((st: any, i: number) => `${i + 1}. **${st.title}** - ${st.description || "No description"}`).join("\n") || "No subtasks"}
+
+**Risks & Considerations:**
+${parsed.risks?.map((r: string) => `- ${r}`).join("\n") || "None identified"}
+`;
+
+    await bd.addComment(issue_id, planComment, project_path);
+
+    // Add label to mark that plan was generated
+    await bd.updateIssue(issue_id, {
+      addLabels: ["ai-plan-generated"],
+    }, project_path);
+
+    // Create subtasks
+    const createdSubtasks = [];
+    if (parsed.subtasks && Array.isArray(parsed.subtasks)) {
+      for (const subtask of parsed.subtasks) {
+        try {
+          const newIssue = await bd.createIssue({
+            title: subtask.title,
+            description: subtask.description || "",
+            type: subtask.type || "task",
+            parent: issue_id,
+          }, project_path);
+
+          createdSubtasks.push(newIssue);
+        } catch (createError) {
+          console.error("Failed to create subtask:", createError);
+        }
+      }
+    }
+
+    // Get updated issue
+    const updatedIssue = await bd.showIssue(issue_id, project_path);
+
+    return c.json({
+      success: true,
+      issue: updatedIssue,
+      subtasks: createdSubtasks,
+      plan: parsed,
+    });
+  } catch (error: any) {
+    console.error("Failed to generate plan:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
 
 /**
  * POST /api/bd/generate-task
