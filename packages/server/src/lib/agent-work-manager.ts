@@ -245,7 +245,8 @@ async function processSubtask(
             const msgEvent = event.assistantMessageEvent
             if (msgEvent && msgEvent.type === 'text_delta') {
               fullResponse += msgEvent.delta
-              workStore.addStepEvent(workId, 'text_delta', msgEvent.delta)
+              // Don't broadcast text_delta events - they're noisy streaming tokens
+              // Only accumulate internally for the final summary
             }
             break
 
