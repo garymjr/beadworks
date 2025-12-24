@@ -350,10 +350,48 @@ export async function removeDep(issue: string, dep: string, dbPath?: string) {
  */
 export async function cleanupClosedIssues(dbPath?: string, olderThanDays?: number) {
   const args = ["cleanup", "--force", "--json"];
-  
+
   if (olderThanDays !== undefined) {
     args.push("--older-than", olderThanDays.toString());
   }
-  
+
   return execBdCommand(args, dbPath);
+}
+
+/**
+ * Get subtasks for a parent issue
+ */
+export async function getSubtasks(parentId: string, dbPath?: string): Promise<{
+  subtasks: Array<any>
+  progress: {
+    total: number
+    completed: number
+    percent: number
+  }
+}> {
+  // Get all issues and filter by parent
+  const allIssues = await listIssues(undefined, dbPath);
+
+  // Filter subtasks - bd uses dot notation for subtasks (e.g., "server-d98.6" is a subtask of "server-d98")
+  const subtasks = allIssues.filter((issue: any) => {
+    // If there's an explicit parent field, use it
+    if (issue.parent === parentId) return true;
+
+    // Otherwise, check if the issue ID starts with the parent ID followed by a dot
+    // e.g., "server-d98.6" is a subtask of "server-d98"
+    return issue.id.startsWith(`${parentId}.`);
+  });
+
+  // Calculate progress
+  const total = subtasks.length;
+  const completed = subtasks.filter((st: any) => st.status === "closed").length;
+
+  return {
+    subtasks,
+    progress: {
+      total,
+      completed,
+      percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    },
+  };
 }

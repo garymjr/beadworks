@@ -3,7 +3,7 @@
  * Builds prompts for the agent based on issue details and context
  */
 
-import { showIssue } from './bd-cli.js'
+import { showIssue, getSubtasks } from './bd-cli.js'
 
 export interface IssueContext {
   id: string
@@ -24,6 +24,7 @@ export interface IssueContext {
 
 /**
  * Build a work prompt for the agent based on issue details
+ * NOTE: This is kept for backward compatibility but subtasks are now processed individually
  */
 export async function buildWorkPrompt(
   issueId: string,
@@ -37,11 +38,21 @@ export async function buildWorkPrompt(
     throw new Error(`Issue ${issueId} not found`)
   }
 
-  // Get subtasks if this is a parent issue
+  // Get subtasks for context
   let subtasks: Array<{ id: string; title: string; description: string; status: string }> = []
-  
-  // Note: We could fetch subtasks here, but for now we'll work with what we have
-  // The subtasks can be fetched separately if needed
+
+  try {
+    const subtaskResult = await getSubtasks(issueId, projectPath)
+    subtasks = subtaskResult.subtasks.map((st: any) => ({
+      id: st.id,
+      title: st.title || st.Title || '',
+      description: st.description || st.Description || st.body || st.content || '',
+      status: st.status,
+    }))
+    console.log(`[Prompts] Found ${subtasks.length} subtasks for issue ${issueId}`)
+  } catch (error) {
+    console.warn(`[Prompts] Could not fetch subtasks for ${issueId}:`, error)
+  }
 
   const context: IssueContext = {
     id: issue.id,
@@ -57,6 +68,61 @@ export async function buildWorkPrompt(
 
   const prompt = formatWorkPrompt(context)
   return { prompt, context }
+}
+
+/**
+ * Build a prompt for a single subtask
+ */
+export async function buildPromptForSubtask(
+  subtask: any,
+  parentIssueId: string,
+  projectPath?: string
+): Promise<{ prompt: string }> {
+  // Get parent issue context
+  const parentResult = await showIssue(parentIssueId, projectPath)
+  const parentIssue = Array.isArray(parentResult) ? parentResult[0] : parentResult
+
+  const parentTitle = parentIssue?.title || parentIssue?.Title || 'Unknown Issue'
+  const parentDesc = parentIssue?.description || parentIssue?.Description || ''
+
+  const prompt = `You are a senior software engineer working on a subtask of a larger issue.
+
+PARENT ISSUE:
+Title: ${parentTitle}
+Description: ${parentDesc || 'No description'}
+
+═══════════════════════════════════════════════════════════════
+YOUR SUBTASK TO IMPLEMENT
+═══════════════════════════════════════════════════════════════
+
+Subtask ID: ${subtask.id}
+Title: ${subtask.title}
+Description: ${subtask.description || 'No description provided'}
+
+═══════════════════════════════════════════════════════════════
+IMPLEMENTATION GUIDELINES
+═══════════════════════════════════════════════════════════════
+
+1. Read and understand the existing codebase
+2. Focus ONLY on this specific subtask - do not try to do other subtasks
+3. Write clean, well-documented code
+4. Add or update tests as needed
+5. Test your changes before considering it done
+
+═══════════════════════════════════════════════════════════════
+EXPECTED OUTPUT
+═══════════════════════════════════════════════════════════════
+
+When complete, provide a summary of:
+- What you implemented
+- Files you modified or created
+- Any tests you added
+- Any important notes
+
+Please implement this subtask now. Show your work as you progress.
+`
+
+  return { prompt }
 }
 
 /**
@@ -92,12 +158,17 @@ ${description || 'No description provided'}
   }
 
   if (subtasks && subtasks.length > 0) {
-    prompt += `\n═══════════════════════════════════════════════════════════════
+    prompt += `
+═══════════════════════════════════════════════════════════════
 SUBTASKS TO COMPLETE
 ═══════════════════════════════════════════════════════════════
 
-${subtasks.map((st, i) => `${i + 1}. [${st.status}] ${st.title}
+This issue has ${subtasks.length} subtasks. YOU MUST COMPLETE ALL SUBTASKS before considering this issue complete.
+
+${subtasks.map((st, i) => `${i + 1}. [${st.status === 'closed' ? '✓' : ' '}] ${st.title}
    ${st.description || ''}`).join('\n\n')}
+
+IMPORTANT: Work through each subtask systematically. Mark each as complete (by closing it) as you finish it.
 `
   }
 
@@ -114,11 +185,23 @@ IMPLEMENTATION GUIDELINES
 6. Use appropriate tools (file_read, file_write, bash, etc.)
 
 WORKFLOW:
+${subtasks && subtasks.length > 0 ? `
+1. Review all subtasks above
+2. Work through each subtask one at a time
+3. For each subtask:
+   a. Read relevant files
+   b. Plan your approach
+   c. Implement the changes
+   d. Test your changes
+   e. Mark the subtask as complete (using bd close)
+4. After ALL subtasks are complete, summarize your work
+` : `
 1. Start by reading relevant files to understand the codebase
 2. Plan your approach before making changes
 3. Implement the changes incrementally
 4. Test your changes
 5. Provide a summary of what was done
+`}
 
 ═══════════════════════════════════════════════════════════════
 EXPECTED OUTPUT
@@ -129,6 +212,11 @@ When you complete the work, provide a summary that includes:
 - Files that were modified or created
 - Any tests that were added or updated
 - Any important notes or considerations for the reviewer
+
+${subtasks && subtasks.length > 0 ? `
+CRITICAL: You MUST complete ALL subtasks before finishing.
+The system will verify that all subtasks are closed before marking this issue complete.
+` : ''}
 
 Please begin working on this issue now. Show your work as you progress.
 `

@@ -1,17 +1,18 @@
 /**
  * Agent Work Manager
  * Manages the lifecycle of agent work on issues
+ * Processes subtasks sequentially, one at a time
  */
 
 import { getPiAgentSession } from './pi-agent.js'
-import { updateIssue, closeIssue, addComment } from './bd-cli.js'
+import { updateIssue, closeIssue, addComment, getSubtasks, showIssue } from './bd-cli.js'
 import { workStore } from './work-store.js'
-import { buildWorkPrompt } from './prompts.js'
+import { buildPromptForSubtask } from './prompts.js'
 import { broadcastStatus, broadcastProgress, broadcastStep, broadcastError, broadcastComplete } from './events.js'
 
 export interface WorkOptions {
   projectPath?: string
-  timeout?: number // Default: 5 minutes
+  timeout?: number // Default: 5 minutes per subtask
 }
 
 export interface WorkResult {
@@ -24,6 +25,7 @@ export interface WorkResult {
 
 /**
  * Start work on an issue using the pi-agent
+ * If the issue has subtasks, processes them one at a time
  */
 export async function startWorkOnIssue(
   issueId: string,
@@ -52,12 +54,8 @@ export async function startWorkOnIssue(
     broadcastStatus(issueId, workId, 'starting', 'Claiming issue...')
     await updateIssue(issueId, { status: 'in_progress' }, projectPath)
 
-    // Build the work prompt
-    broadcastStatus(issueId, workId, 'thinking', 'Analyzing issue and building work plan...')
-    const { prompt } = await buildWorkPrompt(issueId, projectPath)
-
     // Start the agent work in the background
-    runAgentWork(session, issueId, workId, prompt, projectPath, timeout).catch((error) => {
+    runAgentWork(session, issueId, workId, projectPath, timeout).catch((error) => {
       console.error(`[AgentWorkManager] Error in agent work:`, error)
     })
 
@@ -71,120 +69,111 @@ export async function startWorkOnIssue(
 
 /**
  * Run the agent work (background function)
+ * Processes all subtasks sequentially
  */
 async function runAgentWork(
   session: any,
   issueId: string,
   workId: string,
-  prompt: string,
   projectPath: string | undefined,
   timeout: number
 ): Promise<WorkResult> {
   const startTime = Date.now()
-  const filesChanged: Set<string> = new Set()
-  let fullResponse = ''
-  let agentComplete = false
+  const allFilesChanged: Set<string> = new Set()
+  const completedSubtasks: string[] = []
+  const failedSubtasks: Array<{ id: string; error: string }> = []
 
   try {
-    // Subscribe to agent events
-    const unsubscribe = session.subscribe((event: any) => {
-      const workSession = workStore.getSession(workId)
-      if (!workSession) return
+    // Get subtasks for this issue
+    broadcastStatus(issueId, workId, 'thinking', 'Fetching subtasks...')
+    const { subtasks, progress } = await getSubtasks(issueId, projectPath)
+
+    console.log(`[AgentWorkManager] Found ${subtasks.length} subtasks (${progress.completed} already complete)`)
+
+    // Filter out already-closed subtasks
+    const pendingSubtasks = subtasks.filter((st: any) => st.status !== 'closed')
+
+    if (pendingSubtasks.length === 0) {
+      broadcastStatus(issueId, workId, 'working', 'All subtasks already complete!')
+      await closeIssueWithReason(issueId, 'All subtasks were already completed', projectPath)
+      workStore.completeSession(workId, true, 'All subtasks were already completed', [])
+      return {
+        success: true,
+        workId,
+        summary: 'All subtasks were already completed',
+        filesChanged: [],
+        duration: Date.now() - startTime,
+      }
+    }
+
+    const totalSubtasks = pendingSubtasks.length
+
+    // Process each subtask
+    for (let i = 0; i < pendingSubtasks.length; i++) {
+      const subtask = pendingSubtasks[i]
+      const subtaskNum = i + 1
+      const percentComplete = Math.round((i / totalSubtasks) * 100)
+
+      broadcastProgress(
+        issueId,
+        workId,
+        percentComplete,
+        `Working on subtask ${subtaskNum}/${totalSubtasks}: ${subtask.title}`,
+        totalSubtasks
+      )
 
       try {
-        switch (event.type) {
-          case 'message_update':
-            const msgEvent = event.assistantMessageEvent
-            if (msgEvent && msgEvent.type === 'text_delta') {
-              fullResponse += msgEvent.delta
+        const result = await processSubtask(
+          session,
+          subtask,
+          issueId,
+          workId,
+          projectPath,
+          timeout,
+          subtaskNum,
+          totalSubtasks
+        )
 
-              // Stream text deltas as step events
-              workStore.addStepEvent(workId, 'text_delta', msgEvent.delta)
-            }
-            break
+        completedSubtasks.push(subtask.id)
+        result.filesChanged.forEach((f) => allFilesChanged.add(f))
 
-          case 'tool_execution_start':
-            // Agent is using a tool
-            workStore.addStepEvent(
-              workId,
-              'tool_call',
-              `Using tool: ${event.toolName || 'unknown'}`,
-              { toolName: event.toolName }
-            )
+        broadcastProgress(
+          issueId,
+          workId,
+          Math.round(((i + 1) / totalSubtasks) * 100),
+          `Completed subtask ${subtaskNum}/${totalSubtasks}: ${subtask.title}`,
+          totalSubtasks
+        )
+      } catch (error: any) {
+        console.error(`[AgentWorkManager] Failed to process subtask ${subtask.id}:`, error)
+        failedSubtasks.push({ id: subtask.id, error: error.message })
 
-            // Track file operations
-            if (event.toolName === 'write' || event.toolName === 'edit') {
-              // The tool arguments should contain the file path
-              // This is a simplified tracking - in real implementation, parse the arguments
-              const args = event.arguments || {}
-              if (args.path) {
-                filesChanged.add(args.path)
-              }
-            }
-            break
-
-          case 'tool_execution_end':
-            // Tool execution result
-            if (event.error) {
-              workStore.addStepEvent(
-                workId,
-                'tool_call',
-                `Tool error: ${event.error}`,
-                { toolName: event.toolName }
-              )
-            }
-            break
-
-          case 'agent_end':
-            agentComplete = true
-            break
-        }
-      } catch (err) {
-        console.error(`[AgentWorkManager] Error handling event:`, err)
+        // Add error comment
+        await addComment(subtask.id, `❌ Failed to process subtask: ${error.message}`, projectPath)
       }
-    })
-
-    // Update status and send the prompt
-    workStore.updateStatus(workId, 'working', 'Agent is working on the issue...')
-    workStore.updateProgress(workId, 10, 'Starting work...')
-
-    await session.prompt(prompt)
-
-    // Wait for the agent to complete or timeout
-    const maxWaitTime = timeout
-    const checkInterval = 100
-    
-    while (!agentComplete && Date.now() - startTime < maxWaitTime) {
-      await new Promise(resolve => setTimeout(resolve, checkInterval))
-      
-      // Update progress based on elapsed time (rough estimate)
-      const elapsed = Date.now() - startTime
-      const estimatedProgress = Math.min(90, 10 + Math.floor((elapsed / maxWaitTime) * 80))
-      workStore.updateProgress(workId, estimatedProgress, 'Working...')
     }
 
-    unsubscribe()
+    // All subtasks processed
+    const success = failedSubtasks.length === 0
+    const duration = Date.now() - startTime
+    const changedFiles = Array.from(allFilesChanged)
 
-    if (!agentComplete) {
-      throw new Error('Agent work timed out')
+    let summary = `Completed ${completedSubtasks.length} of ${totalSubtasks} subtasks.`
+    if (failedSubtasks.length > 0) {
+      summary += ` Failed: ${failedSubtasks.map((f) => f.id).join(', ')}.`
     }
 
-    // Extract summary from the response
-    const summary = extractSummary(fullResponse)
-    const changedFiles = Array.from(filesChanged)
-
-    // Close the issue with the result
+    // Close the parent issue
     await closeIssueWithReason(issueId, summary, projectPath)
 
-    // Mark session as complete
-    workStore.completeSession(workId, true, summary, changedFiles)
+    workStore.completeSession(workId, success, summary, changedFiles)
 
     return {
-      success: true,
+      success,
       workId,
       summary,
       filesChanged: changedFiles,
-      duration: Date.now() - startTime,
+      duration,
     }
   } catch (error: any) {
     // Mark session as errored
@@ -208,6 +197,119 @@ async function runAgentWork(
 }
 
 /**
+ * Process a single subtask
+ */
+async function processSubtask(
+  session: any,
+  subtask: any,
+  parentIssueId: string,
+  workId: string,
+  projectPath: string | undefined,
+  timeout: number,
+  subtaskNum: number,
+  totalSubtasks: number
+): Promise<{ success: boolean; filesChanged: string[] }> {
+  const subtaskFilesChanged: Set<string> = new Set()
+  let fullResponse = ''
+  let agentComplete = false
+
+  console.log(`[AgentWorkManager] Processing subtask ${subtask.id}: ${subtask.title}`)
+
+  // Mark subtask as in_progress
+  await updateIssue(subtask.id, { status: 'in_progress' }, projectPath)
+  broadcastStatus(parentIssueId, workId, 'working', `Starting: ${subtask.title}`)
+
+  try {
+    // Build prompt for this subtask
+    const { prompt } = await buildPromptForSubtask(subtask, parentIssueId, projectPath)
+
+    // Subscribe to agent events
+    const unsubscribe = session.subscribe((event: any) => {
+      try {
+        switch (event.type) {
+          case 'message_update':
+            const msgEvent = event.assistantMessageEvent
+            if (msgEvent && msgEvent.type === 'text_delta') {
+              fullResponse += msgEvent.delta
+              workStore.addStepEvent(workId, 'text_delta', msgEvent.delta)
+            }
+            break
+
+          case 'tool_execution_start':
+            workStore.addStepEvent(
+              workId,
+              'tool_call',
+              `[${subtaskNum}/${totalSubtasks}] Using tool: ${event.toolName || 'unknown'}`,
+              { toolName: event.toolName }
+            )
+
+            if (event.toolName === 'write' || event.toolName === 'edit') {
+              const args = event.arguments || {}
+              if (args.path) {
+                subtaskFilesChanged.add(args.path)
+              }
+            }
+            break
+
+          case 'tool_execution_end':
+            if (event.error) {
+              workStore.addStepEvent(
+                workId,
+                'tool_call',
+                `[${subtaskNum}/${totalSubtasks}] Tool error: ${event.error}`,
+                { toolName: event.toolName }
+              )
+            }
+            break
+
+          case 'agent_end':
+            agentComplete = true
+            break
+        }
+      } catch (err) {
+        console.error(`[AgentWorkManager] Error handling event:`, err)
+      }
+    })
+
+    // Send prompt and wait for response
+    await session.prompt(prompt)
+
+    // Wait for the agent to complete or timeout
+    const subtaskStartTime = Date.now()
+    const maxWaitTime = timeout
+    const checkInterval = 100
+
+    while (!agentComplete && Date.now() - subtaskStartTime < maxWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, checkInterval))
+    }
+
+    unsubscribe()
+
+    if (!agentComplete) {
+      throw new Error('Agent work timed out')
+    }
+
+    // Extract summary from response
+    const summary = extractSummary(fullResponse)
+
+    // Close the subtask
+    await addComment(subtask.id, `✅ Completed by agent:\n\n${summary}`, projectPath)
+    await closeIssue(subtask.id, projectPath)
+
+    broadcastStatus(parentIssueId, workId, 'working', `Completed: ${subtask.title}`)
+
+    return {
+      success: true,
+      filesChanged: Array.from(subtaskFilesChanged),
+    }
+  } catch (error: any) {
+    // Mark subtask as failed
+    await updateIssue(subtask.id, { status: 'open' }, projectPath) // Reset to open
+    throw error
+  }
+}
+
+/**
  * Close an issue with a reason
  */
 async function closeIssueWithReason(
@@ -216,9 +318,6 @@ async function closeIssueWithReason(
   projectPath?: string
 ): Promise<void> {
   try {
-    // For bd CLI, we need to use the --reason flag
-    // But the closeIssue function doesn't support that yet
-    // So we'll add a comment and then close
     await addComment(issueId, `✅ Completed by agent:\n\n${reason}`, projectPath)
     await closeIssue(issueId, projectPath)
   } catch (error) {
@@ -263,10 +362,7 @@ export async function cancelWork(issueId: string): Promise<{ status: string }> {
   }
 
   workStore.cancelSession(session.workId)
-  
-  // Note: We can't actually cancel the running agent session
-  // The agent will complete its current work but we'll ignore the results
-  
+
   return { status: 'cancelled' }
 }
 
