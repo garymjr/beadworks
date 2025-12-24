@@ -53,6 +53,86 @@ workRoutes.get('/events', async (c) => {
         console.error('[SSE] Error sending connect event:', err)
       }
 
+      // Send current session state and recent events if exists (for reconnection)
+      if (issueId) {
+        const session = workStore.getActiveSession(issueId)
+        if (session) {
+          console.log(`[SSE] Found active session ${session.workId}, replaying recent events`)
+
+          // Send current status
+          try {
+            const statusEvent = {
+              type: 'status',
+              issueId: session.issueId,
+              workId: session.workId,
+              timestamp: Date.now(),
+              data: {
+                status: session.status,
+                message: session.currentStep,
+              },
+            }
+            safeEnqueue(encoder.encode(`data: ${JSON.stringify(statusEvent)}\n\n`))
+
+            // Send current progress
+            const progressEvent = {
+              type: 'progress',
+              issueId: session.issueId,
+              workId: session.workId,
+              timestamp: Date.now(),
+              data: {
+                percent: session.progress,
+                currentStep: session.currentStep,
+                totalSteps: session.totalSteps,
+              },
+            }
+            safeEnqueue(encoder.encode(`data: ${JSON.stringify(progressEvent)}\n\n`))
+
+            // Replay recent step events (last 50)
+            const recentEvents = session.events.slice(-50)
+            for (const event of recentEvents) {
+              const replayEvent = {
+                type: 'step',
+                issueId: session.issueId,
+                workId: session.workId,
+                timestamp: event.timestamp,
+                data: event.data,
+              }
+              safeEnqueue(encoder.encode(`data: ${JSON.stringify(replayEvent)}\n\n`))
+            }
+
+            // Send completion/error state if applicable
+            if (session.status === 'complete' && session.result) {
+              const completeEvent = {
+                type: 'complete',
+                issueId: session.issueId,
+                workId: session.workId,
+                timestamp: Date.now(),
+                data: {
+                  success: session.result.success,
+                  summary: session.result.summary,
+                  duration: session.endTime ? session.endTime - session.startTime : 0,
+                  filesChanged: session.result.filesChanged,
+                },
+              }
+              safeEnqueue(encoder.encode(`data: ${JSON.stringify(completeEvent)}\n\n`))
+            } else if (session.status === 'error' && session.error) {
+              const errorEvent = {
+                type: 'error',
+                issueId: session.issueId,
+                workId: session.workId,
+                timestamp: Date.now(),
+                data: session.error,
+              }
+              safeEnqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`))
+            }
+
+            console.log(`[SSE] Replayed ${recentEvents.length} events for session ${session.workId}`)
+          } catch (err) {
+            console.error('[SSE] Error sending session history:', err)
+          }
+        }
+      }
+
       // Subscribe to work store events
       const unsubscribe = workStore.subscribe((event) => {
         if (isClosed) return

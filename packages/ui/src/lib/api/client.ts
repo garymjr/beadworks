@@ -408,7 +408,9 @@ async function fetchFromProjectsAPI(endpoint: string, options?: RequestInit) {
     const error = await response
       .json()
       .catch(() => ({ message: response.statusText }))
-    throw new Error(error.message || error.error || 'Projects API request failed')
+    throw new Error(
+      error.message || error.error || 'Projects API request failed',
+    )
   }
 
   return response.json()
@@ -513,6 +515,13 @@ export async function getWorkSession(workId: string) {
  * Get all active work sessions
  */
 export async function getActiveWorkSessions() {
+  return fetchFromWorkAPI('/active')
+}
+
+/**
+ * Get all active work sessions (alias for consistency with naming)
+ */
+export async function getActiveWork() {
   return fetchFromWorkAPI('/active')
 }
 

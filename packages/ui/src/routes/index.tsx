@@ -6,6 +6,7 @@ import {
   checkProjectInitialized,
   cleanupClosedTasks,
   generatePlan,
+  getActiveWork,
   getSubtasks,
   getTasks,
   initProject,
@@ -13,6 +14,7 @@ import {
   updateTaskStatus,
 } from '../lib/api/client'
 import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
+import { activeWorkStore } from '../lib/active-work-store'
 import { ProjectSelector } from '../components/ProjectSelector'
 import { AddProjectModal } from '../components/AddProjectModal'
 import { AddTaskModal } from '../components/AddTaskModal'
@@ -33,6 +35,7 @@ interface ActiveWorkSession {
   issueId: string
   issueTitle: string
   startedAt: number
+  projectPath: string
 }
 
 // Bead colors for visual variety
@@ -301,12 +304,15 @@ function BeadworksKanban() {
     async function loadProjectAndMigrate() {
       // First, check if we need to migrate legacy projects
       if (!hasMigrated) {
-        const { hasLegacyProjects, migrateProjectsFromLocalStorage } = await import('../lib/projects')
+        const { hasLegacyProjects, migrateProjectsFromLocalStorage } =
+          await import('../lib/projects')
         if (hasLegacyProjects()) {
           try {
             const migrated = await migrateProjectsFromLocalStorage()
             if (migrated > 0) {
-              console.log(`Migrated ${migrated} projects from localStorage to API`)
+              console.log(
+                `Migrated ${migrated} projects from localStorage to API`,
+              )
             }
           } catch (error) {
             console.error('Failed to migrate projects:', error)
@@ -360,6 +366,85 @@ function BeadworksKanban() {
     },
     [router],
   )
+
+  // Rehydrate active work sessions from localStorage on mount
+  // This ensures that running agent work is restored after page refresh
+  useEffect(() => {
+    async function rehydrateActiveWork() {
+      // 1. Load from localStorage
+      const storedSessions = activeWorkStore.getAll()
+
+      if (storedSessions.length === 0) {
+        console.log('[Rehydrate] No stored sessions found')
+        return
+      }
+
+      console.log(`[Rehydrate] Found ${storedSessions.length} stored sessions`)
+
+      // 2. Verify with server which sessions are still active
+      try {
+        const { sessions: serverSessions } = await getActiveWork()
+        const activeIssueIds = new Set(
+          (serverSessions as Array<{ issueId: string }>).map((s) => s.issueId),
+        )
+
+        console.log(
+          '[Rehydrate] Server reports active sessions:',
+          Array.from(activeIssueIds),
+        )
+
+        // 3. Restore sessions that are still active
+        const sessionsToRestore = storedSessions.filter((s) =>
+          activeIssueIds.has(s.issueId),
+        )
+
+        if (sessionsToRestore.length > 0) {
+          console.log(
+            `[Rehydrate] Restoring ${sessionsToRestore.length} sessions`,
+          )
+          setActiveWorkSessions(
+            new Map(sessionsToRestore.map((s) => [s.issueId, s])),
+          )
+        }
+
+        // 4. Clean up stale entries from localStorage
+        const staleSessions = storedSessions.filter(
+          (s) => !activeIssueIds.has(s.issueId),
+        )
+        staleSessions.forEach((s) => activeWorkStore.remove(s.issueId))
+        if (staleSessions.length > 0) {
+          console.log(
+            `[Rehydrate] Cleaned up ${staleSessions.length} stale sessions`,
+          )
+        }
+      } catch (error) {
+        console.error(
+          '[Rehydrate] Failed to verify sessions with server:',
+          error,
+        )
+        // On error, clean up all stored sessions to avoid confusion
+        activeWorkStore.clear()
+      }
+    }
+
+    rehydrateActiveWork()
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Sync active work sessions to localStorage whenever they change
+  useEffect(() => {
+    const sessions = Array.from(activeWorkSessions.values())
+    if (sessions.length === 0) {
+      // If no sessions, clear localStorage
+      activeWorkStore.clear()
+      return
+    }
+
+    // Sync all active sessions to localStorage
+    activeWorkStore.clear()
+    sessions.forEach((s) => activeWorkStore.add(s))
+  }, [activeWorkSessions])
 
   const handleDragStart = (task: Task) => {
     setDraggedTask(task)
@@ -461,11 +546,14 @@ function BeadworksKanban() {
       })
       if (result.success) {
         // Find the task title from columns
-        const task = columns.flatMap((col) => col.tasks).find((t) => t.id === taskId)
+        const task = columns
+          .flatMap((col) => col.tasks)
+          .find((t) => t.id === taskId)
         const newSession: ActiveWorkSession = {
           issueId: taskId,
           issueTitle: task?.title || 'Unknown Issue',
           startedAt: Date.now(),
+          projectPath: currentProject?.path || '',
         }
         // Add new session without removing existing ones
         setActiveWorkSessions((prev) => new Map(prev).set(taskId, newSession))
