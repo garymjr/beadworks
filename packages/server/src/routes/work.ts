@@ -21,48 +21,68 @@ const workRoutes = new Hono()
  */
 workRoutes.get('/events', async (c) => {
   const issueId = c.req.query('issue_id')
-  
-  // Set headers for SSE
-  return new Response(
-    new ReadableStream({
-      start(controller) {
-        const encoder = new TextEncoder()
-        
-        // Send initial connection message
+
+  const encoder = new TextEncoder()
+
+  // Create a readable stream for SSE
+  const stream = new ReadableStream({
+    start(controller) {
+      // Send initial connection message
+      try {
         const connectEvent = `data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`
         controller.enqueue(encoder.encode(connectEvent))
-        
-        // Subscribe to events
-        const unsubscribe = workStore.subscribe((event) => {
+      } catch (err) {
+        console.error('[SSE] Error sending connect event:', err)
+      }
+
+      // Subscribe to work store events
+      const unsubscribe = workStore.subscribe((event) => {
+        try {
           // Filter by issue_id if provided
           if (issueId && event.issueId !== issueId) return
-          
+
           const data = `data: ${JSON.stringify(event)}\n\n`
           controller.enqueue(encoder.encode(data))
-        })
-        
-        // Send keep-alive comments every 15 seconds
-        const keepAlive = setInterval(() => {
+        } catch (err) {
+          console.error('[SSE] Error sending event:', err)
+        }
+      })
+
+      // Send keep-alive comments every 15 seconds to prevent timeout
+      const keepAlive = setInterval(() => {
+        try {
           controller.enqueue(encoder.encode(': keep-alive\n\n'))
-        }, 15000)
-        
-        // Clean up on close
-        c.req.raw.signal?.addEventListener('abort', () => {
-          clearInterval(keepAlive)
-          unsubscribe()
+        } catch (err) {
+          console.error('[SSE] Error sending keep-alive:', err)
+        }
+      }, 15000)
+
+      // Clean up when client disconnects
+      const cleanup = () => {
+        clearInterval(keepAlive)
+        unsubscribe()
+        try {
           controller.close()
-        })
-      },
-    }),
-    {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no', // Disable nginx buffering
-      },
-    }
-  )
+        } catch (err) {
+          // Already closed
+        }
+      }
+
+      // Listen for client abort
+      if (c.req.raw.signal) {
+        c.req.raw.signal.addEventListener('abort', cleanup)
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 })
 
 // ============================================================================

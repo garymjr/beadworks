@@ -55,9 +55,9 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
       clearTimeout(retryTimeoutRef.current)
     }
 
-    // Build URL - use the same origin as the current page
-    const baseUrl = window.location.origin
-    const url = new URL(`${baseUrl}/api/work/events`)
+    // Build URL - use the backend server URL
+    const backendUrl = process.env.BD_API_URL || 'http://localhost:3001'
+    const url = new URL(`${backendUrl}/api/work/events`)
     url.searchParams.set('issue_id', issueId)
 
     console.log(`[useAgentEvents] Connecting to ${url.toString()}`)
