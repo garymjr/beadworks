@@ -22,45 +22,79 @@ const workRoutes = new Hono()
 workRoutes.get('/events', async (c) => {
   const issueId = c.req.query('issue_id')
 
+  console.log(`[SSE] New connection for issue: ${issueId}`)
+
   const encoder = new TextEncoder()
 
   // Create a readable stream for SSE
   const stream = new ReadableStream({
     start(controller) {
+      let isClosed = false
+      const cleanupHandlers: Array<() => void> = []
+
+      // Safe enqueue that handles closed streams
+      const safeEnqueue = (data: Uint8Array) => {
+        if (isClosed) return
+        try {
+          controller.enqueue(data)
+        } catch (err) {
+          console.error('[SSE] Error enqueueing data:', err)
+          isClosed = true
+          cleanup()
+        }
+      }
+
       // Send initial connection message
       try {
         const connectEvent = `data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`
-        controller.enqueue(encoder.encode(connectEvent))
+        safeEnqueue(encoder.encode(connectEvent))
+        console.log(`[SSE] Sent connect event for issue: ${issueId}`)
       } catch (err) {
         console.error('[SSE] Error sending connect event:', err)
       }
 
       // Subscribe to work store events
       const unsubscribe = workStore.subscribe((event) => {
+        if (isClosed) return
+
         try {
           // Filter by issue_id if provided
           if (issueId && event.issueId !== issueId) return
 
           const data = `data: ${JSON.stringify(event)}\n\n`
-          controller.enqueue(encoder.encode(data))
+          safeEnqueue(encoder.encode(data))
         } catch (err) {
           console.error('[SSE] Error sending event:', err)
         }
       })
 
+      cleanupHandlers.push(unsubscribe)
+
       // Send keep-alive comments every 15 seconds to prevent timeout
       const keepAlive = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(': keep-alive\n\n'))
-        } catch (err) {
-          console.error('[SSE] Error sending keep-alive:', err)
+        if (!isClosed) {
+          try {
+            safeEnqueue(encoder.encode(': keep-alive\n\n'))
+          } catch (err) {
+            console.error('[SSE] Error sending keep-alive:', err)
+          }
         }
       }, 15000)
 
+      cleanupHandlers.push(() => clearInterval(keepAlive))
+
       // Clean up when client disconnects
       const cleanup = () => {
-        clearInterval(keepAlive)
-        unsubscribe()
+        if (isClosed) return
+        isClosed = true
+        console.log(`[SSE] Cleaning up connection for issue: ${issueId}`)
+        cleanupHandlers.forEach((handler) => {
+          try {
+            handler()
+          } catch (err) {
+            console.error('[SSE] Error in cleanup handler:', err)
+          }
+        })
         try {
           controller.close()
         } catch (err) {
@@ -70,8 +104,19 @@ workRoutes.get('/events', async (c) => {
 
       // Listen for client abort
       if (c.req.raw.signal) {
-        c.req.raw.signal.addEventListener('abort', cleanup)
+        c.req.raw.signal.addEventListener('abort', () => {
+          console.log(`[SSE] Client aborted connection for issue: ${issueId}`)
+          cleanup()
+        })
       }
+
+      // Also set up timeout cleanup (30 minutes max)
+      const timeout = setTimeout(() => {
+        console.log(`[SSE] Connection timeout for issue: ${issueId}`)
+        cleanup()
+      }, 30 * 60 * 1000)
+
+      cleanupHandlers.push(() => clearTimeout(timeout))
     },
   })
 

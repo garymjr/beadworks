@@ -49,22 +49,21 @@ export async function startWorkOnIssue(
   const workSession = workStore.createSession(issueId, projectPath || process.cwd())
   const { workId } = workSession
 
-  try {
-    // Update issue status to in_progress
-    broadcastStatus(issueId, workId, 'starting', 'Claiming issue...')
-    await updateIssue(issueId, { status: 'in_progress' }, projectPath)
+  // Update issue status to in_progress
+  broadcastStatus(issueId, workId, 'starting', 'Claiming issue...')
+  await updateIssue(issueId, { status: 'in_progress' }, projectPath)
 
-    // Start the agent work in the background
-    runAgentWork(session, issueId, workId, projectPath, timeout).catch((error) => {
-      console.error(`[AgentWorkManager] Error in agent work:`, error)
+  // Start the agent work in the background with error handling
+  runAgentWork(session, issueId, workId, projectPath, timeout).catch((error) => {
+    console.error(`[AgentWorkManager] Unhandled error in runAgentWork:`, error)
+    // Ensure error is broadcast and issue is reset
+    workStore.errorSession(workId, error?.message || 'Unknown error', false, false)
+    updateIssue(issueId, { status: 'open' }, projectPath).catch((e) => {
+      console.error('[AgentWorkManager] Failed to reset issue status:', e)
     })
+  })
 
-    return { workId, status: 'started' }
-  } catch (error: any) {
-    // Clean up the session if we failed to start
-    workStore.errorSession(workId, error.message, false, true)
-    throw error
-  }
+  return { workId, status: 'started' }
 }
 
 /**
@@ -82,6 +81,7 @@ async function runAgentWork(
   const allFilesChanged: Set<string> = new Set()
   const completedSubtasks: string[] = []
   const failedSubtasks: Array<{ id: string; error: string }> = []
+  let totalSubtasks = 0
 
   try {
     // Get subtasks for this issue
@@ -92,6 +92,7 @@ async function runAgentWork(
 
     // Filter out already-closed subtasks
     const pendingSubtasks = subtasks.filter((st: any) => st.status !== 'closed')
+    totalSubtasks = pendingSubtasks.length
 
     if (pendingSubtasks.length === 0) {
       broadcastStatus(issueId, workId, 'working', 'All subtasks already complete!')
@@ -105,8 +106,6 @@ async function runAgentWork(
         duration: Date.now() - startTime,
       }
     }
-
-    const totalSubtasks = pendingSubtasks.length
 
     // Process each subtask
     for (let i = 0; i < pendingSubtasks.length; i++) {
@@ -176,12 +175,27 @@ async function runAgentWork(
       duration,
     }
   } catch (error: any) {
+    console.error('[AgentWorkManager] Fatal error in runAgentWork:', error)
+
     // Mark session as errored
-    workStore.errorSession(workId, error.message, true, true)
+    workStore.errorSession(workId, error.message, false, false)
+
+    // Reset issue status to open if it failed
+    try {
+      await updateIssue(issueId, { status: 'open' }, projectPath)
+    } catch (updateError) {
+      console.error('[AgentWorkManager] Failed to reset issue status:', updateError)
+    }
 
     // Add a comment about the failure
     try {
-      await addComment(issueId, `❌ Agent work failed: ${error.message}`, projectPath)
+      await addComment(
+        issueId,
+        `❌ Agent work failed:\n\n**Error:** ${error.message}\n\n**Completed subtasks:** ${completedSubtasks.length}/${totalSubtasks}\n${
+          failedSubtasks.length > 0 ? `**Failed subtasks:** ${failedSubtasks.map((f) => f.id).join(', ')}` : ''
+        }`,
+        projectPath
+      )
     } catch (commentError) {
       console.error('[AgentWorkManager] Failed to add error comment:', commentError)
     }
@@ -303,8 +317,16 @@ async function processSubtask(
       filesChanged: Array.from(subtaskFilesChanged),
     }
   } catch (error: any) {
-    // Mark subtask as failed
-    await updateIssue(subtask.id, { status: 'open' }, projectPath) // Reset to open
+    console.error(`[AgentWorkManager] Error processing subtask ${subtask.id}:`, error)
+
+    // Mark subtask as failed (reset to open)
+    try {
+      await updateIssue(subtask.id, { status: 'open' }, projectPath)
+      await addComment(subtask.id, `❌ Failed: ${error.message}`, projectPath)
+    } catch (commentError) {
+      console.error(`[AgentWorkManager] Failed to update subtask ${subtask.id}:`, commentError)
+    }
+
     throw error
   }
 }
