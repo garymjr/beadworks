@@ -6,6 +6,8 @@
 const API_BASE = process.env.BD_API_URL || 'http://localhost:3001/api/bd'
 const WORK_API_BASE =
   process.env.WORK_API_URL || 'http://localhost:3001/api/work'
+const PROJECTS_API_BASE =
+  process.env.PROJECTS_API_URL || 'http://localhost:3001/api/projects'
 
 // ============================================================================
 // Project Management
@@ -379,6 +381,76 @@ export async function cleanupClosedTasks(
     },
     projectPath,
   )
+}
+
+// ============================================================================
+// Projects API
+// ============================================================================
+
+/**
+ * Helper function for projects API calls
+ */
+async function fetchFromProjectsAPI(endpoint: string, options?: RequestInit) {
+  const url = new URL(
+    endpoint ? `${PROJECTS_API_BASE}/${endpoint}` : PROJECTS_API_BASE,
+    window.location.origin,
+  )
+
+  const response = await fetch(url.toString(), {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  })
+
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ message: response.statusText }))
+    throw new Error(error.message || error.error || 'Projects API request failed')
+  }
+
+  return response.json()
+}
+
+/**
+ * Get all projects
+ */
+export async function getProjectsFromAPI() {
+  return fetchFromProjectsAPI('')
+}
+
+/**
+ * Add a new project
+ */
+export async function addProjectToAPI(input: { name: string; path: string }) {
+  return fetchFromProjectsAPI('', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+/**
+ * Update a project
+ */
+export async function updateProjectInAPI(
+  id: string,
+  updates: Partial<{ name: string; path: string }>,
+) {
+  return fetchFromProjectsAPI(id, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  })
+}
+
+/**
+ * Remove a project
+ */
+export async function removeProjectFromAPI(id: string) {
+  return fetchFromProjectsAPI(id, {
+    method: 'DELETE',
+  })
 }
 
 // ============================================================================

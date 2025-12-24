@@ -238,19 +238,42 @@ function BeadworksKanban() {
 
   // Track current project - initialize safely for SSR
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
+  const [hasMigrated, setHasMigrated] = useState(false)
 
   // Load current project from localStorage on mount and sync URL
+  // Also handle migration from localStorage to API
   useEffect(() => {
-    const project = getCurrentProject()
-    setCurrentProject(project)
+    async function loadProjectAndMigrate() {
+      // First, check if we need to migrate legacy projects
+      if (!hasMigrated) {
+        const { hasLegacyProjects, migrateProjectsFromLocalStorage } = await import('../lib/projects')
+        if (hasLegacyProjects()) {
+          try {
+            const migrated = await migrateProjectsFromLocalStorage()
+            if (migrated > 0) {
+              console.log(`Migrated ${migrated} projects from localStorage to API`)
+            }
+          } catch (error) {
+            console.error('Failed to migrate projects:', error)
+          }
+        }
+        setHasMigrated(true)
+      }
 
-    // Sync URL with current project if not already set
-    if (project?.path && !search.projectPath) {
-      router.navigate({
-        to: '/',
-        search: { projectPath: project.path },
-      })
+      // Then load the current project
+      const project = await getCurrentProject()
+      setCurrentProject(project)
+
+      // Sync URL with current project if not already set
+      if (project?.path && !search.projectPath) {
+        router.navigate({
+          to: '/',
+          search: { projectPath: project.path },
+        })
+      }
     }
+
+    loadProjectAndMigrate()
     // Only run on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

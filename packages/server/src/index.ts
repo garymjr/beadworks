@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { bdRoutes } from "./routes/bd.js";
 import { cwdRoutes } from "./routes/cwd.js";
 import { workRoutes } from "./routes/work.js";
+import { projectsRoutes } from "./routes/projects.js";
 import { initializePiAgent } from "./lib/pi-agent.js";
 
 const app = new Hono();
@@ -37,6 +38,9 @@ app.route("/api/bd", bdRoutes);
 
 // Mount work routes
 app.route("/api/work", workRoutes);
+
+// Mount projects routes
+app.route("/api/projects", projectsRoutes);
 
 // Mount cwd routes
 app.route("/", cwdRoutes);

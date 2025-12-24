@@ -1,4 +1,10 @@
 // Project management types and utilities
+import {
+  getProjectsFromAPI,
+  addProjectToAPI,
+  updateProjectInAPI,
+  removeProjectFromAPI,
+} from './api/client'
 
 export interface Project {
   id: string
@@ -8,156 +14,195 @@ export interface Project {
   createdAt: string
 }
 
-export interface ProjectSettings {
+interface ProjectSettings {
   currentProjectId: string | null
-  projects: Array<Project>
 }
 
-const STORAGE_KEY = 'beadworks-projects'
+const STORAGE_KEY = 'beadworks-current-project'
 
-// Generate a consistent color for a project
-export function getProjectColor(id: string): string {
-  const colors = [
-    '#ff6b6b',
-    '#ffd93d',
-    '#6bcb77',
-    '#4d96ff',
-    '#9b59b6',
-    '#ff9ff3',
-    '#ff9f43',
-    '#54a0ff',
-    '#5f27cd',
-    '#00d2d3',
-    '#1dd1a1',
-    '#f368e0',
-  ]
-  let hash = 0
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return colors[Math.abs(hash) % colors.length]
-}
+// ============================================================================
+// Current Project Selection (localStorage)
+// ============================================================================
 
-// Get all projects from localStorage
-export function getProjects(): Array<Project> {
-  if (typeof window === 'undefined') return []
-
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (!stored) return []
-
-    const settings: ProjectSettings = JSON.parse(stored)
-    return settings.projects || []
-  } catch (error) {
-    console.error('Failed to load projects:', error)
-    return []
-  }
-}
-
-// Save projects to localStorage
-export function saveProjects(projects: Array<Project>): void {
-  if (typeof window === 'undefined') return
-
-  try {
-    const settings: ProjectSettings = {
-      currentProjectId: getCurrentProjectId(),
-      projects,
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-  } catch (error) {
-    console.error('Failed to save projects:', error)
-  }
-}
-
-// Get current project ID
+// Get current project ID from localStorage
 export function getCurrentProjectId(): string | null {
   if (typeof window === 'undefined') return null
 
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (!stored) return null
-
-    const settings: ProjectSettings = JSON.parse(stored)
-    return settings.currentProjectId || null
+    return stored || null
   } catch (error) {
     console.error('Failed to get current project:', error)
     return null
   }
 }
 
-// Set current project ID
+// Set current project ID in localStorage
 export function setCurrentProjectId(projectId: string | null): void {
   if (typeof window === 'undefined') return
 
   try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    const settings: ProjectSettings = stored
-      ? JSON.parse(stored)
-      : { projects: [] }
-
-    settings.currentProjectId = projectId
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+    if (projectId === null) {
+      localStorage.removeItem(STORAGE_KEY)
+    } else {
+      localStorage.setItem(STORAGE_KEY, projectId)
+    }
   } catch (error) {
     console.error('Failed to set current project:', error)
   }
 }
 
-// Get current project
-export function getCurrentProject(): Project | null {
-  if (typeof window === 'undefined') return null
+// ============================================================================
+// Projects List (API-based, persisted to ~/.beadworks/projects.json)
+// ============================================================================
 
-  const projects = getProjects()
-  const currentId = getCurrentProjectId()
+// Get all projects from the server
+export async function getProjects(): Promise<Array<Project>> {
+  try {
+    const result = await getProjectsFromAPI()
+    return result.projects || []
+  } catch (error) {
+    console.error('Failed to load projects:', error)
+    return []
+  }
+}
 
-  if (!currentId) return null
-
-  return projects.find((p) => p.id === currentId) || null
+// Synchronous version that returns empty array (for compatibility during migration)
+// TODO: Remove this once all callers are updated to use async version
+export function getProjectsSync(): Array<Project> {
+  // This is a temporary fallback during migration
+  // In the future, all callers should use the async getProjects()
+  return []
 }
 
 // Add a new project
-export function addProject(name: string, path: string): Project {
-  const projects = getProjects()
-  const id = `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
-  const newProject: Project = {
-    id,
-    name,
-    path,
-    color: getProjectColor(id),
-    createdAt: new Date().toISOString(),
+export async function addProject(name: string, path: string): Promise<Project> {
+  try {
+    const result = await addProjectToAPI({ name, path })
+    return result.project
+  } catch (error) {
+    console.error('Failed to add project:', error)
+    throw error
   }
-
-  projects.push(newProject)
-  saveProjects(projects)
-
-  return newProject
 }
 
 // Remove a project
-export function removeProject(projectId: string): void {
-  const projects = getProjects().filter((p) => p.id !== projectId)
-  saveProjects(projects)
+export async function removeProject(projectId: string): Promise<void> {
+  try {
+    await removeProjectFromAPI(projectId)
 
-  // If we removed the current project, clear it
-  if (getCurrentProjectId() === projectId) {
-    const nextProject = projects[0]
-    setCurrentProjectId(nextProject?.id || null)
+    // If we removed the current project, clear it from localStorage
+    if (getCurrentProjectId() === projectId) {
+      // Note: We can't synchronously get the next project anymore
+      // The caller should handle fetching the updated list and setting a new current project
+      setCurrentProjectId(null)
+    }
+  } catch (error) {
+    console.error('Failed to remove project:', error)
+    throw error
   }
 }
 
 // Update a project
-export function updateProject(
+export async function updateProject(
   projectId: string,
   updates: Partial<Project>,
-): void {
-  const projects = getProjects()
-  const index = projects.findIndex((p) => p.id === projectId)
-
-  if (index !== -1) {
-    projects[index] = { ...projects[index], ...updates }
-    saveProjects(projects)
+): Promise<void> {
+  try {
+    await updateProjectInAPI(projectId, updates)
+  } catch (error) {
+    console.error('Failed to update project:', error)
+    throw error
   }
 }
+
+// ============================================================================
+// Combined Operations
+// ============================================================================
+
+// Get current project (combines localStorage current ID with API projects list)
+export async function getCurrentProject(): Promise<Project | null> {
+  const currentId = getCurrentProjectId()
+  if (!currentId) return null
+
+  const projects = await getProjects()
+  return projects.find((p) => p.id === currentId) || null
+}
+
+// ============================================================================
+// Migration (localStorage → API)
+// ============================================================================
+
+interface LegacyProjectSettings {
+  currentProjectId: string | null
+  projects: Array<Project>
+}
+
+const LEGACY_STORAGE_KEY = 'beadworks-projects'
+
+/**
+ * Migrate projects from localStorage to the server API
+ * Call this once on app startup to move data from localStorage to the file system
+ */
+export async function migrateProjectsFromLocalStorage(): Promise<number> {
+  if (typeof window === 'undefined') return 0
+
+  try {
+    const stored = localStorage.getItem(LEGACY_STORAGE_KEY)
+    if (!stored) return 0
+
+    const legacySettings: LegacyProjectSettings = JSON.parse(stored)
+    const projects = legacySettings.projects || []
+
+    if (projects.length === 0) return 0
+
+    // Migrate each project to the server
+    let migrated = 0
+    for (const project of projects) {
+      try {
+        await addProjectToAPI({
+          name: project.name,
+          path: project.path,
+        })
+        migrated++
+      } catch (error) {
+        console.error(`Failed to migrate project ${project.id}:`, error)
+      }
+    }
+
+    // Clear the legacy data after successful migration
+    if (migrated === projects.length) {
+      localStorage.removeItem(LEGACY_STORAGE_KEY)
+    }
+
+    return migrated
+  } catch (error) {
+    console.error('Failed to migrate projects:', error)
+    return 0
+  }
+}
+
+/**
+ * Check if there's legacy data in localStorage that needs migration
+ */
+export function hasLegacyProjects(): boolean {
+  if (typeof window === 'undefined') return false
+
+  try {
+    const stored = localStorage.getItem(LEGACY_STORAGE_KEY)
+    if (!stored) return false
+
+    const legacySettings: LegacyProjectSettings = JSON.parse(stored)
+    const projects = legacySettings.projects || []
+    return projects.length > 0
+  } catch {
+    return false
+  }
+}
+
+// ============================================================================
+// Utilities
+// ============================================================================
 
 // Validate a project path (check if it has a .beads directory)
 export async function validateProjectPath(path: string): Promise<boolean> {

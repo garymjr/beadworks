@@ -23,6 +23,7 @@ export function ProjectSelector({
   const [projects, setProjects] = useState<Array<Project>>([])
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
   const [isOpen, setIsOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const triggerButtonRef = useRef<HTMLButtonElement>(null)
   const [dropdownPosition, setDropdownPosition] = useState({
@@ -34,26 +35,6 @@ export function ProjectSelector({
   useEffect(() => {
     loadProjects()
   }, [])
-
-  // Close dropdown when clicking outside
-  // useEffect(() => {
-  //   function handleClickOutside(event: MouseEvent) {
-  //     if (
-  //       dropdownRef.current &&
-  //       !dropdownRef.current.contains(event.target as Node)
-  //     ) {
-  //       setIsOpen(false)
-  //     }
-  //   }
-  //
-  //   if (isOpen) {
-  //     document.addEventListener('mousedown', handleClickOutside)
-  //   }
-  //
-  //   return () => {
-  //     document.removeEventListener('mousedown', handleClickOutside)
-  //   }
-  // }, [isOpen])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -88,7 +69,6 @@ export function ProjectSelector({
 
       const triggerRect = trigger.getBoundingClientRect()
       const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
 
       // Check if dropdown would overflow on the right (estimated width 288px = w-72)
       const dropdownWidth = 288
@@ -126,32 +106,44 @@ export function ProjectSelector({
     } as React.CSSProperties
   }
 
-  function loadProjects() {
-    const loadedProjects = getProjects()
-    setProjects(loadedProjects)
-    const current = getCurrentProject()
-    setCurrentProject(current)
+  async function loadProjects() {
+    setIsLoading(true)
+    try {
+      const loadedProjects = await getProjects()
+      setProjects(loadedProjects)
+      const current = await getCurrentProject()
+      setCurrentProject(current)
+    } catch (error) {
+      console.error('Failed to load projects:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  function handleSelectProject(project: Project) {
+  async function handleSelectProject(project: Project) {
     setCurrentProjectId(project.id)
     setCurrentProject(project)
     setIsOpen(false)
     onProjectChange?.(project)
   }
 
-  function handleRemoveProject(e: React.MouseEvent, projectId: string) {
+  async function handleRemoveProject(e: React.MouseEvent, projectId: string) {
     e.stopPropagation()
     if (confirm('Remove this project from Beadworks?')) {
-      removeProject(projectId)
+      try {
+        await removeProject(projectId)
 
-      // If we removed the current project, clear it and notify
-      if (currentProject?.id === projectId) {
-        setCurrentProject(null)
-        onProjectChange?.(null)
+        // If we removed the current project, clear it and notify
+        if (currentProject?.id === projectId) {
+          setCurrentProject(null)
+          onProjectChange?.(null)
+        }
+
+        await loadProjects()
+      } catch (error) {
+        console.error('Failed to remove project:', error)
+        alert('Failed to remove project. Please try again.')
       }
-
-      loadProjects()
     }
   }
 
@@ -164,7 +156,12 @@ export function ProjectSelector({
           onClick={() => setIsOpen(!isOpen)}
           className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all duration-200"
         >
-          {currentProject ? (
+          {isLoading ? (
+            <>
+              <div className="w-4 h-4 rounded-full bg-white/20 animate-pulse" />
+              <span className="text-sm text-slate-400">Loading...</span>
+            </>
+          ) : currentProject ? (
             <>
               <div
                 className="w-4 h-4 rounded-full"
@@ -227,7 +224,32 @@ export function ProjectSelector({
 
             {/* Project List */}
             <div className="max-h-80 overflow-y-auto">
-              {projects.length === 0 ? (
+              {isLoading ? (
+                <div className="px-4 py-8 text-center">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-white/5 flex items-center justify-center">
+                    <svg
+                      className="w-6 h-6 text-white/30 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-slate-400">Loading projects...</p>
+                </div>
+              ) : projects.length === 0 ? (
                 <div className="px-4 py-8 text-center">
                   <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-white/5 flex items-center justify-center">
                     <svg
