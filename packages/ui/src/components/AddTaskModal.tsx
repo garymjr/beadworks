@@ -44,7 +44,9 @@ export function AddTaskModal({
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [generatedTitle, setGeneratedTitle] = useState<string | null>(null)
-  const [generatedLabels, setGeneratedLabels] = useState<Array<string> | null>(null)
+  const [generatedLabels, setGeneratedLabels] = useState<Array<string> | null>(
+    null,
+  )
 
   // Reset form when modal opens/closes
   useEffect(() => {

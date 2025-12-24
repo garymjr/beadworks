@@ -1,4 +1,5 @@
 import { createAgentSession, SessionManager } from "@mariozechner/pi-coding-agent";
+import { agentEvents } from "./events.js";
 
 let agentSession: Awaited<ReturnType<typeof createAgentSession>>["session"] | null = null;
 
@@ -19,19 +20,36 @@ export async function initializePiAgent() {
       // Use in-memory session manager for now
       // TODO: Consider persistent sessions for production
       sessionManager: SessionManager.inMemory(),
-
-      // Subscribe to events for logging
-      // session.subscribe((event) => {
-      //   if (event.type === "message_update") {
-      //     const msgEvent = event.assistantMessageEvent;
-      //     if (msgEvent.type === "text_delta") {
-      //       process.stdout.write(msgEvent.delta);
-      //     }
-      //   }
-      // }),
     });
 
     agentSession = session;
+
+    // Subscribe to agent events for logging and broadcasting
+    // Note: This will capture events for ALL agent work, not just work-triggered issues
+    // The work-manager will filter and route events appropriately
+    session.subscribe((event: any) => {
+      // Log all events for debugging
+      console.log(`[Pi-Agent] Event: ${event.type}`);
+
+      // Forward relevant events to the event system
+      // The work store will filter by issueId/workId as needed
+      if (event.type === "message_update") {
+        const msgEvent = event.assistantMessageEvent;
+        if (msgEvent && msgEvent.type === "text_delta") {
+          // Text deltas are streamed - could be logged or displayed
+          process.stdout.write(msgEvent.delta);
+        }
+      } else if (event.type === "tool_execution_start") {
+        console.log(`[Pi-Agent] Tool call: ${event.toolName || "unknown"}`);
+      } else if (event.type === "tool_execution_end") {
+        if (event.error) {
+          console.error(`[Pi-Agent] Tool error: ${event.error}`);
+        }
+      } else if (event.type === "agent_end") {
+        console.log("[Pi-Agent] Agent finished work");
+      }
+    });
+
     console.log(`[Pi-Agent] Session initialized with ID: ${session.sessionId}`);
 
     return agentSession;

@@ -1,5 +1,93 @@
 // Type definitions for Beadworks API
 
+// ============================================================================
+// Agent Work Event Types
+// ============================================================================
+
+export interface BaseAgentEvent {
+  issueId: string
+  workId: string
+  timestamp: number
+}
+
+export interface StatusAgentEvent extends BaseAgentEvent {
+  type: 'status'
+  data: StatusEventData
+}
+
+export interface ProgressAgentEvent extends BaseAgentEvent {
+  type: 'progress'
+  data: ProgressEventData
+}
+
+export interface StepAgentEvent extends BaseAgentEvent {
+  type: 'step'
+  data: StepEventData
+}
+
+export interface ErrorAgentEvent extends BaseAgentEvent {
+  type: 'error'
+  data: ErrorEventData
+}
+
+export interface CompleteAgentEvent extends BaseAgentEvent {
+  type: 'complete'
+  data: CompleteEventData
+}
+
+export type AgentEvent =
+  | StatusAgentEvent
+  | ProgressAgentEvent
+  | StepAgentEvent
+  | ErrorAgentEvent
+  | CompleteAgentEvent
+
+export interface StatusEventData {
+  status:
+    | 'starting'
+    | 'thinking'
+    | 'working'
+    | 'complete'
+    | 'error'
+    | 'cancelled'
+  message?: string
+}
+
+export interface ProgressEventData {
+  percent: number
+  currentStep: string
+  totalSteps?: number
+}
+
+export interface StepEventData {
+  stepType:
+    | 'tool_call'
+    | 'file_read'
+    | 'file_write'
+    | 'shell_command'
+    | 'text_delta'
+  content: string
+  toolName?: string
+  filePath?: string
+}
+
+export interface ErrorEventData {
+  error: string
+  recoverable: boolean
+  canRetry: boolean
+}
+
+export interface CompleteEventData {
+  success: boolean
+  summary: string
+  filesChanged?: Array<string>
+  duration: number
+}
+
+// ============================================================================
+// Task Types
+// ============================================================================
+
 export interface Task {
   id: string
   title: string

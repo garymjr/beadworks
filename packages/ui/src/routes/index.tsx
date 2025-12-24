@@ -2,12 +2,14 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  cancelWork,
   checkProjectInitialized,
   cleanupClosedTasks,
   generatePlan,
   getSubtasks,
   getTasks,
   initProject,
+  startWork,
   updateTask,
   updateTaskStatus,
 } from '../lib/api/client'
@@ -15,6 +17,7 @@ import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
 import { ProjectSelector } from '../components/ProjectSelector'
 import { AddProjectModal } from '../components/AddProjectModal'
 import { AddTaskModal } from '../components/AddTaskModal'
+import { WorkProgressCard } from '../components/WorkProgressCard'
 import { getCurrentProject, getProjects } from '../lib/projects'
 import type { Task } from '../lib/api/types'
 import type { Project } from '../lib/projects'
@@ -199,7 +202,10 @@ function BeadworksKanban() {
         let columnId = STATUS_COLUMN_MAP[task.status] || 'todo'
 
         // Special case: open tasks with ai-plan-generated label go to ready column
-        if (task.status === 'open' && task.labels?.includes('ai-plan-generated')) {
+        if (
+          task.status === 'open' &&
+          task.labels?.includes('ai-plan-generated')
+        ) {
           columnId = 'ready'
         }
 
@@ -225,6 +231,10 @@ function BeadworksKanban() {
   const [subtaskProgress, setSubtaskProgress] = useState<
     Record<string, { total: number; completed: number; percent: number }>
   >({})
+  const [activeWorkIssueId, setActiveWorkIssueId] = useState<string | null>(
+    null,
+  )
+  const [startingWork, setStartingWork] = useState<string | null>(null)
 
   // Track current project - initialize safely for SSR
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
@@ -362,6 +372,38 @@ function BeadworksKanban() {
   const handleDragEnd = () => {
     setDraggedTask(null)
     setDragOverColumn(null)
+  }
+
+  const handleStartWork = async (taskId: string) => {
+    setStartingWork(taskId)
+    try {
+      const result = await startWork({
+        issue_id: taskId,
+        project_path: currentProject?.path,
+      })
+      if (result.success) {
+        setActiveWorkIssueId(taskId)
+      }
+    } catch (error) {
+      console.error('Failed to start work:', error)
+    } finally {
+      setStartingWork(null)
+    }
+  }
+
+  const handleWorkComplete = () => {
+    setActiveWorkIssueId(null)
+    router.invalidate()
+  }
+
+  const handleWorkError = () => {
+    setActiveWorkIssueId(null)
+    router.invalidate()
+  }
+
+  const handleWorkCancel = () => {
+    setActiveWorkIssueId(null)
+    router.invalidate()
   }
 
   const getPriorityGlow = (priority: string) => {
@@ -938,6 +980,27 @@ function BeadworksKanban() {
         </div>
       </header>
 
+      {/* Agent Work Progress Card */}
+      {activeWorkIssueId && (
+        <main className="relative z-10 px-6 pt-4">
+          <div className="max-w-[1800px] mx-auto">
+            <WorkProgressCard
+              issueId={activeWorkIssueId}
+              issueTitle={
+                columns
+                  .flatMap((col) => col.tasks)
+                  .find((t) => t.id === activeWorkIssueId)?.title ||
+                'Unknown Issue'
+              }
+              projectPath={currentProject?.path}
+              onComplete={handleWorkComplete}
+              onError={handleWorkError}
+              onCancel={handleWorkCancel}
+            />
+          </div>
+        </main>
+      )}
+
       {/* Main Board */}
       <main className="relative z-10 p-6">
         <div className="max-w-[1800px] mx-auto">
@@ -1106,6 +1169,66 @@ function BeadworksKanban() {
                                   <p className="text-sm text-slate-400 leading-relaxed mb-3 line-clamp-2">
                                     {task.description}
                                   </p>
+                                )}
+
+                                {/* Start Work Button (only in ready column) */}
+                                {column.id === 'ready' && (
+                                  <button
+                                    onClick={() => handleStartWork(task.id)}
+                                    disabled={
+                                      startingWork === task.id ||
+                                      activeWorkIssueId !== null
+                                    }
+                                    className="w-full mb-3 px-3 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                  >
+                                    {startingWork === task.id ? (
+                                      <>
+                                        <svg
+                                          className="w-4 h-4 animate-spin"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <circle
+                                            className="opacity-25"
+                                            cx="12"
+                                            cy="12"
+                                            r="10"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                          />
+                                          <path
+                                            className="opacity-75"
+                                            fill="currentColor"
+                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                          />
+                                        </svg>
+                                        Starting...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <svg
+                                          className="w-4 h-4"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                                          />
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                          />
+                                        </svg>
+                                        Start Work
+                                      </>
+                                    )}
+                                  </button>
                                 )}
 
                                 {/* Tags */}

@@ -4,6 +4,7 @@ import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { bdRoutes } from "./routes/bd.js";
 import { cwdRoutes } from "./routes/cwd.js";
+import { workRoutes } from "./routes/work.js";
 import { initializePiAgent } from "./lib/pi-agent.js";
 
 const app = new Hono();
@@ -33,6 +34,9 @@ app.get("/api/health", (c) => {
 
 // Mount bd routes
 app.route("/api/bd", bdRoutes);
+
+// Mount work routes
+app.route("/api/work", workRoutes);
 
 // Mount cwd routes
 app.route("/", cwdRoutes);

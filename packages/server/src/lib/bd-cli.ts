@@ -78,9 +78,14 @@ export async function initBeads(projectPath: string): Promise<any> {
 async function execBdCommand(args: string[], dbPath?: string): Promise<any> {
   const cmd = ["bd", ...args, "--json"];
   
-  const env: Record<string, string> = {
-    ...process.env,
-  };
+  const env: Record<string, string> = {};
+  
+  // Copy process.env, filtering out undefined values
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
   
   // Set custom database path if provided
   if (dbPath) {

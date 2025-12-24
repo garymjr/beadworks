@@ -4,6 +4,8 @@
  */
 
 const API_BASE = process.env.BD_API_URL || 'http://localhost:3001/api/bd'
+const WORK_API_BASE =
+  process.env.WORK_API_URL || 'http://localhost:3001/api/work'
 
 // ============================================================================
 // Project Management
@@ -377,4 +379,76 @@ export async function cleanupClosedTasks(
     },
     projectPath,
   )
+}
+
+// ============================================================================
+// Agent Work Management
+// ============================================================================
+
+/**
+ * Helper function for work API calls
+ */
+async function fetchFromWorkAPI(endpoint: string, options?: RequestInit) {
+  const url = new URL(`${WORK_API_BASE}${endpoint}`, window.location.origin)
+
+  const response = await fetch(url.toString(), {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  })
+
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ message: response.statusText }))
+    throw new Error(error.message || error.error || 'Work API request failed')
+  }
+
+  return response.json()
+}
+
+/**
+ * Start agent work on an issue
+ */
+export async function startWork(input: {
+  issue_id: string
+  project_path?: string
+  timeout?: number
+}) {
+  return fetchFromWorkAPI('/start', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+/**
+ * Get the status of work on an issue
+ */
+export async function getWorkStatus(issueId: string) {
+  return fetchFromWorkAPI(`/status/${issueId}`)
+}
+
+/**
+ * Get details of a specific work session
+ */
+export async function getWorkSession(workId: string) {
+  return fetchFromWorkAPI(`/session/${workId}`)
+}
+
+/**
+ * Get all active work sessions
+ */
+export async function getActiveWorkSessions() {
+  return fetchFromWorkAPI('/active')
+}
+
+/**
+ * Cancel active work on an issue
+ */
+export async function cancelWork(issueId: string) {
+  return fetchFromWorkAPI(`/cancel/${issueId}`, {
+    method: 'POST',
+  })
 }
