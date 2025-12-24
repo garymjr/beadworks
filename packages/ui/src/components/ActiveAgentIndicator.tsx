@@ -5,19 +5,22 @@
  */
 
 import { useAgentEvents } from '../hooks/useAgentEvents'
+import type { AgentWorkState } from '../hooks/useAgentEvents'
 
 interface ActiveAgentIndicatorProps {
   issueId: string
   compact?: boolean // If true, shows minimal indicator (dot + status only)
   onClick?: () => void // Optional click handler to open modal
+  initialStateOverride?: Partial<AgentWorkState> // Initial state for rehydration
 }
 
 export function ActiveAgentIndicator({
   issueId,
   compact = false,
   onClick,
+  initialStateOverride,
 }: ActiveAgentIndicatorProps) {
-  const workState = useAgentEvents(issueId, true)
+  const workState = useAgentEvents(issueId, true, initialStateOverride)
 
   // Don't render if no active work
   if (!workState.isActive || workState.isComplete) {
@@ -189,18 +192,18 @@ export function ActiveAgentIndicator({
             }}
           />
         </div>
-        <div className="flex items-center justify-between mt-1">
+        <div className="flex items-center mt-1">
           <span
-            className="text-xs text-slate-400 truncate flex-1 mr-2"
+            className="text-xs text-slate-400 truncate flex-1 min-w-0"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
             {workState.currentStep}
           </span>
           <span
-            className="text-xs text-slate-500 font-medium"
+            className="text-xs text-slate-500 font-medium flex-shrink-0 whitespace-nowrap ml-2"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
-            {workState.progress}%
+            {Math.round(Number(workState.progress) || 0)}%
           </span>
         </div>
       </div>
