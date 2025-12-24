@@ -11,5 +11,7 @@ count.txt
 .output
 .vinxi
 todos.json
+# AI planning documents (ephemeral)
+history/
 # Monorepo
 **/node_modules
