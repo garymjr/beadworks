@@ -730,15 +730,15 @@ ${parsed.risks?.map((r: string) => `- ${r}`).join("\n") || "None identified"}
 
 /**
  * POST /api/bd/generate-task
- * Generate title and labels from a description using the pi-agent
+ * Generate title, description, and labels from a prompt using the pi-agent
  */
 const generateTaskSchema = z.object({
-  description: z.string().min(1, "Description is required"),
+  prompt: z.string().min(1, "Prompt is required"),
   type: z.enum(["bug", "feature", "task", "epic", "chore"]).optional(),
 });
 
 bdRoutes.post("/generate-task", zValidator("json", generateTaskSchema), async (c) => {
-  const { description, type = "task" } = c.req.valid("json");
+  const { prompt, type = "task" } = c.req.valid("json");
 
   try {
     // Import pi-agent
@@ -749,15 +749,18 @@ bdRoutes.post("/generate-task", zValidator("json", generateTaskSchema), async (c
       return c.json({ error: "Pi-agent session not initialized" }, 500);
     }
 
-    // Create a prompt to generate title and labels
-    const prompt = `You are a task management assistant. Based on the following description, generate a concise title and relevant labels.
+    // Create a prompt to generate title, description, and labels
+    const agentPrompt = `You are a task management assistant. Based on the following prompt, generate a complete task with title, description, and relevant labels.
 
-Description: "${description}"
+User Prompt: "${prompt}"
 Type: ${type}
+
+Your job is to expand this brief prompt into a complete, well-structured task. The description should be detailed enough for a developer to understand what needs to be done.
 
 Respond with a JSON object in the following format (no markdown, no explanation):
 {
   "title": "concise title (max 80 chars)",
+  "description": "detailed description explaining what to implement, includes context, requirements, and expected outcome",
   "labels": ["label1", "label2", "label3"]
 }
 
@@ -766,6 +769,14 @@ Guidelines for title:
 - Start with a verb if it's a task or feature
 - Max 80 characters
 - Should clearly communicate what the issue is about
+
+Guidelines for description:
+- Expand the prompt into a full description
+- Include context about what needs to be done
+- Mention specific files, components, or systems affected (if applicable)
+- Describe expected outcomes or acceptance criteria
+- Keep it clear and actionable (2-4 paragraphs typically)
+- Write in present tense, as if instructing a developer
 
 Guidelines for labels:
 - Generate 3-5 relevant labels
@@ -792,7 +803,7 @@ Respond ONLY with the JSON object, nothing else.`;
     });
 
     // Send prompt and wait for response
-    await session.prompt(prompt);
+    await session.prompt(agentPrompt);
 
     // Wait for the agent to complete processing
     const maxWaitTime = 30000; // 30 seconds max
@@ -831,15 +842,17 @@ Respond ONLY with the JSON object, nothing else.`;
       parsed = JSON.parse(cleaned);
     } catch (parseError) {
       console.error("Failed to parse AI response:", fullResponse);
-      // Fallback: extract from the description
+      // Fallback: use the prompt as the description
       parsed = {
-        title: description.split("\n")[0].substring(0, 80),
+        title: prompt.split("\n")[0].substring(0, 80),
+        description: prompt,
         labels: ["ai-generated"]
       };
     }
 
     return c.json({
-      title: parsed.title || description.substring(0, 80),
+      title: parsed.title || prompt.split("\n")[0].substring(0, 80),
+      description: parsed.description || prompt,
       labels: parsed.labels || []
     });
   } catch (error: any) {
