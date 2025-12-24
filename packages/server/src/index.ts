@@ -4,6 +4,7 @@ import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { bdRoutes } from "./routes/bd.js";
 import { cwdRoutes } from "./routes/cwd.js";
+import { initializePiAgent } from "./lib/pi-agent.js";
 
 const app = new Hono();
 
@@ -46,6 +47,9 @@ app.onError((err, c) => {
   console.error(err);
   return c.json({ error: "Internal Server Error", message: err.message }, 500);
 });
+
+// Initialize pi-mono agent
+await initializePiAgent();
 
 // Start server
 const port = process.env.PORT || 3001;
