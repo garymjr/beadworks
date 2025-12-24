@@ -427,6 +427,30 @@ bdRoutes.get("/labels", async (c) => {
 });
 
 // ============================================================================
+// Cleanup
+// ============================================================================
+
+/**
+ * POST /api/bd/cleanup
+ * Delete all closed issues
+ */
+const cleanupSchema = z.object({
+  older_than_days: z.number().optional(),
+});
+
+bdRoutes.post("/cleanup", zValidator("json", cleanupSchema), async (c) => {
+  const dbPath = getDbPath(c);
+  const { older_than_days } = c.req.valid("json");
+  
+  try {
+    const result = await bd.cleanupClosedIssues(dbPath, older_than_days);
+    return c.json(result);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 400);
+  }
+});
+
+// ============================================================================
 // Repositories/Projects
 // ============================================================================
 

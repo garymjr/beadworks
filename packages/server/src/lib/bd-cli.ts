@@ -339,3 +339,16 @@ export async function addDep(issue: string, dep: string, dbPath?: string) {
 export async function removeDep(issue: string, dep: string, dbPath?: string) {
   return execBdCommand(["dep", "remove", issue, dep], dbPath);
 }
+
+/**
+ * Cleanup closed issues
+ */
+export async function cleanupClosedIssues(dbPath?: string, olderThanDays?: number) {
+  const args = ["cleanup", "--force", "--json"];
+  
+  if (olderThanDays !== undefined) {
+    args.push("--older-than", olderThanDays.toString());
+  }
+  
+  return execBdCommand(args, dbPath);
+}

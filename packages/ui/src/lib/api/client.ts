@@ -339,3 +339,24 @@ export async function generateTask(
     projectPath,
   )
 }
+
+// ============================================================================
+// Cleanup
+// ============================================================================
+
+/**
+ * Cleanup closed tasks
+ */
+export async function cleanupClosedTasks(
+  projectPath?: string,
+  olderThanDays?: number,
+) {
+  return fetchFromAPI(
+    '/cleanup',
+    {
+      method: 'POST',
+      body: JSON.stringify({ older_than_days: olderThanDays }),
+    },
+    projectPath,
+  )
+}
