@@ -345,10 +345,10 @@ export async function generatePlan(issueId: string, projectPath?: string) {
 }
 
 /**
- * Generate title and labels from a description using the pi-agent
+ * Generate title, description, and labels from a prompt using the pi-agent
  */
 export async function generateTask(
-  description: string,
+  prompt: string,
   type?: 'bug' | 'feature' | 'task' | 'epic' | 'chore',
   projectPath?: string,
 ) {
@@ -356,7 +356,7 @@ export async function generateTask(
     '/generate-task',
     {
       method: 'POST',
-      body: JSON.stringify({ description, type }),
+      body: JSON.stringify({ prompt, type }),
     },
     projectPath,
   )

@@ -35,12 +35,19 @@ export interface CompleteAgentEvent extends BaseAgentEvent {
   data: CompleteEventData
 }
 
+// Connected event sent when SSE connection is established
+export interface ConnectedAgentEvent {
+  type: 'connected'
+  timestamp: number
+}
+
 export type AgentEvent =
   | StatusAgentEvent
   | ProgressAgentEvent
   | StepAgentEvent
   | ErrorAgentEvent
   | CompleteAgentEvent
+  | ConnectedAgentEvent
 
 export interface StatusEventData {
   status:
@@ -73,7 +80,7 @@ export interface StepEventData {
 
 export interface ErrorEventData {
   error: string
-  message: string
+  message?: string  // Alias for error, optional for compatibility
   recoverable: boolean
   canRetry: boolean
 }
@@ -147,6 +154,13 @@ export interface UpdateTaskInput {
   design?: string
   externalRef?: string
   notes?: string
+}
+
+// Response type for AI-generated task from a prompt
+export interface GeneratedTaskResponse {
+  title: string
+  description?: string
+  labels?: Array<string>
 }
 
 export interface TaskFilters {
