@@ -655,23 +655,73 @@ Respond ONLY with the JSON object, nothing else.`;
       // Handle various formats: ```json ... ```, ``` ... ```, or plain JSON
       let cleaned = fullResponse.trim();
 
-      // Remove opening markdown code block
-      const jsonMatch = cleaned.match(/```(?:json)?\s*\n?/);
-      if (jsonMatch) {
-        cleaned = cleaned.slice(jsonMatch[0].length);
+      // Remove markdown code blocks
+      const openingMatch = cleaned.match(/```\w*\s*\r?\n/);
+      if (openingMatch) {
+        cleaned = cleaned.slice(openingMatch[0].length);
       }
 
-      // Remove closing markdown code block
       const closingMatch = cleaned.match(/```\s*$/);
       if (closingMatch) {
         cleaned = cleaned.slice(0, closingMatch.index);
+      }
+
+      // Extract JSON object using a more robust method
+      // Find a complete JSON object (with balanced braces) in the response
+      const jsonMatch = cleaned.match(/\{[\s\S]*\n\}/);
+      if (jsonMatch) {
+        cleaned = jsonMatch[0];
+      } else {
+        // Fallback: find first { and matching }
+        const startIndex = cleaned.indexOf('{');
+        if (startIndex >= 0) {
+          let depth = 0;
+          let inString = false;
+          let escapeNext = false;
+          let endIndex = -1;
+
+          for (let i = startIndex; i < cleaned.length; i++) {
+            const char = cleaned[i];
+
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+
+            if (char === '\\') {
+              escapeNext = true;
+              continue;
+            }
+
+            if (char === '"') {
+              inString = !inString;
+              continue;
+            }
+
+            if (!inString) {
+              if (char === '{') depth++;
+              else if (char === '}') {
+                depth--;
+                if (depth === 0) {
+                  endIndex = i;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (endIndex > startIndex) {
+            cleaned = cleaned.slice(startIndex, endIndex + 1);
+          }
+        }
       }
 
       cleaned = cleaned.trim();
 
       parsed = JSON.parse(cleaned);
     } catch (parseError) {
-      console.error("Failed to parse AI response:", fullResponse);
+      console.error("Failed to parse AI response:", parseError);
+      console.error("Response content:", fullResponse);
       return c.json({ error: "Failed to generate plan - AI response could not be parsed" }, 500);
     }
 
@@ -825,10 +875,11 @@ Respond ONLY with the JSON object, nothing else.`;
       // Handle various formats: ```json ... ```, ``` ... ```, or plain JSON
       let cleaned = fullResponse.trim();
 
-      // Remove opening markdown code block
-      const jsonMatch = cleaned.match(/```(?:json)?\s*\n?/);
-      if (jsonMatch) {
-        cleaned = cleaned.slice(jsonMatch[0].length);
+      // Remove opening markdown code block (```json or ```)
+      // Match: ``` followed by optional "json" or other language, then optional whitespace, then newline
+      const openingMatch = cleaned.match(/```\w*\s*\r?\n/);
+      if (openingMatch) {
+        cleaned = cleaned.slice(openingMatch[0].length);
       }
 
       // Remove closing markdown code block
@@ -837,11 +888,62 @@ Respond ONLY with the JSON object, nothing else.`;
         cleaned = cleaned.slice(0, closingMatch.index);
       }
 
+      // Extract JSON object using a more robust method
+      // Find a complete JSON object (with balanced braces) in the response
+      const jsonMatch = cleaned.match(/\{[\s\S]*\n\}/);
+      if (jsonMatch) {
+        cleaned = jsonMatch[0];
+      } else {
+        // Fallback: find first { and matching }
+        const startIndex = cleaned.indexOf('{');
+        if (startIndex >= 0) {
+          let depth = 0;
+          let inString = false;
+          let escapeNext = false;
+          let endIndex = -1;
+
+          for (let i = startIndex; i < cleaned.length; i++) {
+            const char = cleaned[i];
+
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+
+            if (char === '\\') {
+              escapeNext = true;
+              continue;
+            }
+
+            if (char === '"') {
+              inString = !inString;
+              continue;
+            }
+
+            if (!inString) {
+              if (char === '{') depth++;
+              else if (char === '}') {
+                depth--;
+                if (depth === 0) {
+                  endIndex = i;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (endIndex > startIndex) {
+            cleaned = cleaned.slice(startIndex, endIndex + 1);
+          }
+        }
+      }
+
       cleaned = cleaned.trim();
 
       parsed = JSON.parse(cleaned);
     } catch (parseError) {
-      console.error("Failed to parse AI response:", fullResponse);
+      console.error("Failed to parse AI response:", parseError);
+      console.error("Response content:", fullResponse);
       // Fallback: use the prompt as the description
       parsed = {
         title: prompt.split("\n")[0].substring(0, 80),
