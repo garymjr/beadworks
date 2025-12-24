@@ -28,8 +28,10 @@ export async function initializePiAgent() {
     // Note: This will capture events for ALL agent work, not just work-triggered issues
     // The work-manager will filter and route events appropriately
     session.subscribe((event: any) => {
-      // Log all events for debugging
-      console.log(`[Pi-Agent] Event: ${event.type}`);
+      // Log events for debugging (skip message_update to avoid token spam)
+      if (event.type !== "message_update") {
+        console.log(`[Pi-Agent] Event: ${event.type}`);
+      }
 
       // Forward relevant events to the event system
       // The work store will filter by issueId/workId as needed
