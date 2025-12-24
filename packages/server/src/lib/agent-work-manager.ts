@@ -160,10 +160,16 @@ async function runAgentWork(
       summary += ` Failed: ${failedSubtasks.map((f) => f.id).join(', ')}.`
     }
 
-    // Close the parent issue
-    await closeIssueWithReason(issueId, summary, projectPath)
-
-    workStore.completeSession(workId, success, summary, changedFiles)
+    // Only close the parent issue if ALL subtasks succeeded
+    if (success) {
+      await closeIssueWithReason(issueId, summary, projectPath)
+      workStore.completeSession(workId, true, summary, changedFiles)
+    } else {
+      // Some subtasks failed - leave parent issue open with a summary
+      await addComment(issueId, `⚠️ Partial completion:\n\n${summary}\n\nThe failed subtasks need to be addressed. The issue remains open until all subtasks are completed.`, projectPath)
+      await updateIssue(issueId, { status: 'open' }, projectPath)
+      workStore.completeSession(workId, false, summary, changedFiles)
+    }
 
     return {
       success,
@@ -222,8 +228,10 @@ async function processSubtask(
   totalSubtasks: number
 ): Promise<{ success: boolean; filesChanged: string[] }> {
   const subtaskFilesChanged: Set<string> = new Set()
+  const toolsExecuted: Set<string> = new Set()
   let fullResponse = ''
   let agentComplete = false
+  let toolErrors: Array<{ tool: string; error: string }> = []
 
   console.log(`[AgentWorkManager] Processing subtask ${subtask.id}: ${subtask.title}`)
 
@@ -256,6 +264,10 @@ async function processSubtask(
               { toolName: event.toolName }
             )
 
+            if (event.toolName) {
+              toolsExecuted.add(event.toolName)
+            }
+
             if (event.toolName === 'write' || event.toolName === 'edit') {
               const args = event.arguments || {}
               if (args.path) {
@@ -266,6 +278,7 @@ async function processSubtask(
 
           case 'tool_execution_end':
             if (event.error) {
+              toolErrors.push({ tool: event.toolName || 'unknown', error: event.error })
               workStore.addStepEvent(
                 workId,
                 'tool_call',
@@ -300,6 +313,30 @@ async function processSubtask(
 
     if (!agentComplete) {
       throw new Error('Agent work timed out')
+    }
+
+    // VALIDATE: Check if actual work was performed
+    const hasWorkEvidence = validateWorkPerformed(toolsExecuted, subtaskFilesChanged, toolErrors)
+
+    if (!hasWorkEvidence.valid) {
+      // No actual work was done - leave subtask open with a comment
+      const message = `⚠️ Agent did not perform actual work for this subtask.\n\n` +
+        `**Reason:** ${hasWorkEvidence.reason}\n\n` +
+        `**Tools used:** ${Array.from(toolsExecuted).join(', ') || 'none'}\n` +
+        `**Files modified:** ${Array.from(subtaskFilesChanged).join(', ') || 'none'}\n` +
+        `**Tool errors:** ${toolErrors.length > 0 ? toolErrors.map(e => `${e.tool}: ${e.error}`).join('; ') : 'none'}\n\n` +
+        `This subtask needs manual attention or clarification. The agent may have:\n` +
+        `- Needed more context or information\n` +
+        `- Encountered an unclear description\n` +
+        `- Required clarification on implementation approach\n\n` +
+        `**Agent response excerpt:**\n${fullResponse.substring(0, 500)}${fullResponse.length > 500 ? '...' : ''}`
+
+      await addComment(subtask.id, message, projectPath)
+
+      // Reset to open status so it can be retried or handled manually
+      await updateIssue(subtask.id, { status: 'open' }, projectPath)
+
+      throw new Error(`Subtask not completed: ${hasWorkEvidence.reason}`)
     }
 
     // Extract summary from response
@@ -344,6 +381,58 @@ async function closeIssueWithReason(
   } catch (error) {
     console.error('[AgentWorkManager] Failed to close issue:', error)
     throw error
+  }
+}
+
+/**
+ * Validate that actual work was performed by the agent
+ */
+function validateWorkPerformed(
+  toolsExecuted: Set<string>,
+  filesChanged: Set<string>,
+  toolErrors: Array<{ tool: string; error: string }>
+): { valid: boolean; reason?: string } {
+  // Check for critical tool errors that would indicate work couldn't be done
+  const criticalErrors = toolErrors.filter(e =>
+    e.error.includes('file not found') ||
+    e.error.includes('permission denied') ||
+    e.error.includes('does not exist')
+  )
+
+  if (criticalErrors.length > 0) {
+    return {
+      valid: false,
+      reason: `Critical errors prevented work: ${criticalErrors.map(e => e.error).join(', ')}`
+    }
+  }
+
+  // Check if any files were modified (strongest evidence of work)
+  if (filesChanged.size > 0) {
+    return { valid: true }
+  }
+
+  // Check if any productive tools were used
+  // Productive tools: write, edit, bash (with certain commands)
+  const productiveTools = new Set(['write', 'edit', 'bash'])
+  const hasProductiveToolCalls = Array.from(toolsExecuted).some(t => productiveTools.has(t))
+
+  if (hasProductiveToolCalls) {
+    // Tools were called but no files changed - might be a read-only task
+    // This could be valid for some tasks (like reading/analyzing)
+    // But for implementation tasks, we should expect file changes
+    if (toolsExecuted.has('read') && toolsExecuted.size === 1) {
+      return {
+        valid: false,
+        reason: 'Agent only read files but made no changes. Subtask requires implementation.'
+      }
+    }
+    return { valid: true }
+  }
+
+  // No tools were executed at all - agent just responded with text
+  return {
+    valid: false,
+    reason: 'Agent did not execute any tools. Only provided a text response without performing actual work.'
   }
 }
 

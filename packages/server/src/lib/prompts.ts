@@ -100,24 +100,37 @@ Title: ${subtask.title}
 Description: ${subtask.description || 'No description provided'}
 
 ═══════════════════════════════════════════════════════════════
+CRITICAL REQUIREMENTS
+═══════════════════════════════════════════════════════════════
+
+YOU MUST ACTUALLY IMPLEMENT THIS SUBTASK.
+- This is NOT a planning or analysis task
+- You MUST make actual code changes (write, edit files, run commands)
+- Merely explaining what you would do is NOT sufficient
+- The system validates that files are modified before marking complete
+
+═══════════════════════════════════════════════════════════════
 IMPLEMENTATION GUIDELINES
 ═══════════════════════════════════════════════════════════════
 
-1. Read and understand the existing codebase
+1. Read and understand the existing codebase FIRST
 2. Focus ONLY on this specific subtask - do not try to do other subtasks
-3. Write clean, well-documented code
+3. Make ACTUAL changes to code files (use write/edit tools)
 4. Add or update tests as needed
-5. Test your changes before considering it done
+5. Run tests to verify your changes work
+6. Only consider it done when the code is written and tested
 
 ═══════════════════════════════════════════════════════════════
 EXPECTED OUTPUT
 ═══════════════════════════════════════════════════════════════
 
-When complete, provide a summary of:
-- What you implemented
-- Files you modified or created
-- Any tests you added
+When complete, provide a summary that MUST include:
+- What you implemented (specific changes made)
+- Files you modified or created (list file paths)
+- Any tests you added or updated
 - Any important notes
+
+IMPORTANT: Your work will be validated. If no files were modified, the subtask will NOT be marked complete.
 
 Please implement this subtask now. Show your work as you progress.
 `
