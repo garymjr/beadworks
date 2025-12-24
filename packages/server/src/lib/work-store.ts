@@ -79,6 +79,13 @@ class WorkStore {
 
     this.sessions.set(workId, session)
 
+    // Add initial status event to session history (for replay on reconnection)
+    session.events.push({
+      type: 'status',
+      timestamp: Date.now(),
+      data: { status: 'starting', message: 'Agent is initializing' },
+    })
+
     // Broadcast initial status
     broadcastStatus(issueId, workId, 'starting', 'Agent is initializing')
 
@@ -202,6 +209,19 @@ class WorkStore {
     }
 
     const duration = session.endTime - session.startTime
+
+    // Add completion event to session history
+    session.events.push({
+      type: 'complete',
+      timestamp: Date.now(),
+      data: {
+        success,
+        summary,
+        duration,
+        filesChanged,
+      },
+    })
+
     broadcastComplete(session.issueId, workId, success, summary, duration, filesChanged)
 
     console.log(`[WorkStore] Session ${workId} ${success ? 'completed' : 'failed'} in ${duration}ms`)
@@ -225,6 +245,13 @@ class WorkStore {
       canRetry,
     }
 
+    // Add error event to session history
+    session.events.push({
+      type: 'error',
+      timestamp: Date.now(),
+      data: { error, recoverable, canRetry },
+    })
+
     broadcastError(session.issueId, workId, error, recoverable, canRetry)
 
     console.error(`[WorkStore] Session ${workId} error: ${error}`)
@@ -243,7 +270,14 @@ class WorkStore {
     session.status = 'cancelled'
     session.endTime = Date.now()
 
-    broadcastStatus(session.issueId, workId, 'error', 'Work was cancelled')
+    // Add cancellation event to session history
+    session.events.push({
+      type: 'status',
+      timestamp: Date.now(),
+      data: { status: 'cancelled', message: 'Work was cancelled' },
+    })
+
+    broadcastStatus(session.issueId, workId, 'cancelled', 'Work was cancelled')
 
     console.log(`[WorkStore] Session ${workId} cancelled`)
 
