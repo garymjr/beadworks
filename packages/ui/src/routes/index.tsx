@@ -1,6 +1,7 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAgentEvents } from '../hooks/useAgentEvents'
 import {
   cancelWork,
   checkProjectInitialized,
@@ -18,6 +19,7 @@ import { ProjectSelector } from '../components/ProjectSelector'
 import { AddProjectModal } from '../components/AddProjectModal'
 import { AddTaskModal } from '../components/AddTaskModal'
 import { WorkProgressCard } from '../components/WorkProgressCard'
+import { WorkProgressModal } from '../components/WorkProgressModal'
 import { getCurrentProject, getProjects } from '../lib/projects'
 import type { Task } from '../lib/api/types'
 import type { Project } from '../lib/projects'
@@ -115,6 +117,64 @@ function getParentTaskId(subtaskId: string): string {
 
 // Stable empty array reference to avoid infinite re-renders
 const EMPTY_TASKS: Array<Task> = []
+
+// Wrapper component for WorkProgressCard that uses useAgentEvents hook
+function WorkProgressCardWrapper({
+  session,
+  projectPath,
+  onComplete,
+  onError,
+  onCancel,
+  onDismiss,
+  onClick,
+}: {
+  session: ActiveWorkSession
+  projectPath?: string
+  onComplete?: () => void
+  onError?: () => void
+  onCancel?: () => void
+  onDismiss?: () => void
+  onClick?: () => void
+}) {
+  const workState = useAgentEvents(session.issueId, true)
+
+  return (
+    <WorkProgressCard
+      issueId={session.issueId}
+      issueTitle={session.issueTitle}
+      projectPath={projectPath}
+      startedAt={session.startedAt}
+      onComplete={onComplete}
+      onError={onError}
+      onCancel={onCancel}
+      onDismiss={onDismiss}
+      onClick={onClick}
+      workState={workState}
+    />
+  )
+}
+
+// Wrapper component for WorkProgressModal that uses useAgentEvents hook
+function WorkProgressModalWrapper({
+  session,
+  onClose,
+}: {
+  session: ActiveWorkSession
+  onClose: () => void
+}) {
+  const workState = useAgentEvents(session.issueId, true)
+
+  return (
+    <WorkProgressModal
+      isOpen={true}
+      onClose={onClose}
+      issueId={session.issueId}
+      issueTitle={session.issueTitle}
+      workState={workState}
+      startedAt={session.startedAt}
+    />
+  )
+}
 
 export const Route = createFileRoute('/')({
   component: BeadworksKanban,
@@ -243,6 +303,13 @@ function BeadworksKanban() {
     Map<string, ActiveWorkSession>
   >(new Map())
   const [startingWork, setStartingWork] = useState<string | null>(null)
+  // Modal state for detailed view
+  const [modalSessionId, setModalSessionId] = useState<string | null>(null)
+
+  // Get the session for modal
+  const modalSession = modalSessionId
+    ? activeWorkSessions.get(modalSessionId)
+    : null
 
   // Track current project - initialize safely for SSR
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
@@ -1036,16 +1103,15 @@ function BeadworksKanban() {
         <main className="relative z-10 px-6 pt-4">
           <div className="max-w-[1800px] mx-auto space-y-3">
             {Array.from(activeWorkSessions.values()).map((session) => (
-              <WorkProgressCard
+              <WorkProgressCardWrapper
                 key={session.issueId}
-                issueId={session.issueId}
-                issueTitle={session.issueTitle}
+                session={session}
                 projectPath={currentProject?.path}
-                startedAt={session.startedAt}
                 onComplete={() => handleWorkComplete(session.issueId)}
                 onError={() => handleWorkError(session.issueId)}
                 onCancel={() => handleWorkCancel(session.issueId)}
                 onDismiss={() => handleWorkComplete(session.issueId)}
+                onClick={() => setModalSessionId(session.issueId)}
               />
             ))}
           </div>
@@ -1485,6 +1551,14 @@ function BeadworksKanban() {
         }
         projectPath={currentProject?.path}
       />
+
+      {/* Work Progress Modal */}
+      {modalSession && (
+        <WorkProgressModalWrapper
+          session={modalSession}
+          onClose={() => setModalSessionId(null)}
+        />
+      )}
 
       {/* Custom font imports */}
       <style>

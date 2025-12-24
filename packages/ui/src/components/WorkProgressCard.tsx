@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { useAgentEvents } from '../hooks/useAgentEvents'
+import type { AgentWorkState } from '../hooks/useAgentEvents'
 import { cancelWork } from '../lib/api/client'
 
 interface WorkProgressCardProps {
@@ -12,6 +12,7 @@ interface WorkProgressCardProps {
   issueTitle: string
   projectPath?: string
   startedAt?: number
+  workState: AgentWorkState
   onComplete?: () => void
   onError?: () => void
   onCancel?: () => void
@@ -24,13 +25,13 @@ export function WorkProgressCard({
   issueTitle,
   projectPath,
   startedAt,
+  workState,
   onComplete,
   onError,
   onCancel,
   onDismiss,
   onClick,
 }: WorkProgressCardProps) {
-  const workState = useAgentEvents(issueId, true)
   const [elapsed, setElapsed] = useState('0m 0s')
 
   // Update elapsed time every second
