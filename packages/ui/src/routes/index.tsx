@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   getTasks,
@@ -76,6 +76,9 @@ function getPriorityFromLabels(
   return 'medium'
 }
 
+// Stable empty array reference to avoid infinite re-renders
+const EMPTY_TASKS: Array<Task> = []
+
 export const Route = createFileRoute('/')({
   component: BeadworksKanban,
   validateSearch: (search: Record<string, unknown>) => ({
@@ -90,7 +93,7 @@ function BeadworksKanban() {
 
   // Fetch tasks directly - skip init check for now
   const {
-    data: tasks = [],
+    data: tasks = EMPTY_TASKS,
     error,
     isLoading,
   } = useQuery({
@@ -106,13 +109,39 @@ function BeadworksKanban() {
     error,
   })
 
-  const [columns, setColumns] = useState<Array<Column>>([
+  // Base column definitions
+  const baseColumns: Array<Column> = [
     { id: 'todo', title: 'Todo', tasks: [] },
     { id: 'blocked', title: 'Blocked', tasks: [] },
     { id: 'ready', title: 'Ready', tasks: [] },
     { id: 'in-progress', title: 'In Progress', tasks: [] },
     { id: 'done', title: 'Done', tasks: [] },
-  ])
+  ]
+
+  const [columns, setColumns] = useState<Array<Column>>(baseColumns)
+  const prevTasksRef = useRef<Array<Task>>(EMPTY_TASKS)
+
+  // Organize tasks into columns - only update if tasks actually changed
+  useEffect(() => {
+    // Only update if the tasks reference actually changed (not just a new empty array)
+    if (tasks === prevTasksRef.current) return
+
+    prevTasksRef.current = tasks
+
+    setColumns((prev) => {
+      const newCols = prev.map((col) => ({ ...col, tasks: [] }))
+
+      tasks.forEach((task) => {
+        const columnId = STATUS_COLUMN_MAP[task.status] || 'todo'
+        const colIndex = newCols.findIndex((c) => c.id === columnId)
+        if (colIndex !== -1) {
+          newCols[colIndex].tasks.push(task)
+        }
+      })
+
+      return newCols
+    })
+  }, [tasks])
 
   const [draggedTask, setDraggedTask] = useState<Task | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
@@ -167,23 +196,6 @@ function BeadworksKanban() {
     },
     [router],
   )
-
-  // Organize tasks into columns
-  useEffect(() => {
-    setColumns((prev) => {
-      const newCols = prev.map((col) => ({ ...col, tasks: [] }))
-
-      tasks.forEach((task) => {
-        const columnId = STATUS_COLUMN_MAP[task.status] || 'todo'
-        const colIndex = newCols.findIndex((c) => c.id === columnId)
-        if (colIndex !== -1) {
-          newCols[colIndex].tasks.push(task)
-        }
-      })
-
-      return newCols
-    })
-  }, [tasks])
 
   const handleDragStart = (task: Task) => {
     setDraggedTask(task)
@@ -288,6 +300,190 @@ function BeadworksKanban() {
 
   // Show "no project selected" state
   if (!currentProject) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 overflow-hidden">
+        {/* Animated background */}
+        <div className="fixed inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),transparent)]" />
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+        </div>
+
+        {/* Header */}
+        <header className="relative z-10 border-b border-white/5 backdrop-blur-sm">
+          <div className="max-w-[1800px] mx-auto px-6 py-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <circle cx="12" cy="12" r="3" strokeWidth="2" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div>
+                  <h1
+                    className="text-2xl font-bold text-white tracking-tight"
+                    style={{ fontFamily: 'Outfit, sans-serif' }}
+                  >
+                    Beadworks
+                  </h1>
+                  <p className="text-sm text-slate-400">
+                    Select a project to get started
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <ProjectSelector
+                  onProjectChange={handleProjectChange}
+                  onAddProjectClick={() => setShowAddProjectModal(true)}
+                />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Empty State */}
+        <main className="relative z-10 flex items-center justify-center min-h-[calc(100vh-88px)]">
+          <div className="text-center max-w-lg mx-auto px-6">
+            {/* Bead illustration */}
+            <div className="mb-8 flex justify-center gap-3">
+              <div
+                className="w-16 h-16 rounded-full"
+                style={{
+                  background:
+                    'radial-gradient(circle at 30% 30%, #ff6b6bdd, #ff6b6b88)',
+                  boxShadow:
+                    '0 8px 32px #ff6b6b40, inset 0 1px 0 rgba(255,255,255,0.3)',
+                }}
+              />
+              <div
+                className="w-16 h-16 rounded-full"
+                style={{
+                  background:
+                    'radial-gradient(circle at 30% 30%, #ffd93ddd, #ffd93d88)',
+                  boxShadow:
+                    '0 8px 32px #ffd93d40, inset 0 1px 0 rgba(255,255,255,0.3)',
+                }}
+              />
+              <div
+                className="w-16 h-16 rounded-full"
+                style={{
+                  background:
+                    'radial-gradient(circle at 30% 30%, #6bcb77dd, #6bcb7788)',
+                  boxShadow:
+                    '0 8px 32px #6bcb7740, inset 0 1px 0 rgba(255,255,255,0.3)',
+                }}
+              />
+            </div>
+
+            <h2
+              className="text-3xl font-bold text-white mb-4"
+              style={{ fontFamily: 'Outfit, sans-serif' }}
+            >
+              No Project Selected
+            </h2>
+            <p className="text-lg text-slate-400 mb-8 leading-relaxed">
+              Select a project from the dropdown above to view and manage your
+              tasks. Each project has its own kanban board and task history.
+            </p>
+
+            {/* Hint */}
+            <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-left">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
+                  <svg
+                    className="w-5 h-5 text-violet-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h3
+                    className="text-sm font-semibold text-white mb-1"
+                    style={{ fontFamily: 'Outfit, sans-serif' }}
+                  >
+                    Getting Started
+                  </h3>
+                  <p className="text-sm text-slate-400 leading-relaxed">
+                    Click the project selector above to add a new project. Your
+                    project directory should contain a{' '}
+                    <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">
+                      .beads
+                    </code>{' '}
+                    folder initialized with{' '}
+                    <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">
+                      bd init
+                    </code>
+                    .
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* Footer */}
+        <footer className="fixed bottom-0 left-0 right-0 z-20 border-t border-white/5 bg-slate-950/80 backdrop-blur-sm">
+          <div className="max-w-[1800px] mx-auto px-6 py-3">
+            <div
+              className="flex items-center justify-between text-xs"
+              style={{ fontFamily: 'JetBrains Mono, monospace' }}
+            >
+              <div className="flex items-center gap-6">
+                <span className="text-slate-500">
+                  <span className="text-violet-400">●</span> System Active
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-500">
+                <span>Press</span>
+                <kbd className="px-2 py-1 rounded bg-white/5 text-slate-400">
+                  ?
+                </kbd>
+                <span>for keyboard shortcuts</span>
+              </div>
+            </div>
+          </div>
+        </footer>
+
+        {/* Add Project Modal */}
+        <AddProjectModal
+          isOpen={showAddProjectModal}
+          onClose={() => setShowAddProjectModal(false)}
+          onProjectAdded={handleProjectAdded}
+        />
+
+        {/* Custom font imports */}
+        <style>
+          @import
+          url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        </style>
+      </div>
+    )
+  }
+
+  // Show "project not initialized" state when there's an error from the API
+  if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 overflow-hidden">
         {/* Animated background */}
@@ -480,190 +676,6 @@ function BeadworksKanban() {
               <div className="flex items-center gap-6">
                 <span className="text-slate-500">
                   <span className="text-amber-400">●</span> Needs Initialization
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-500">
-                <span>Press</span>
-                <kbd className="px-2 py-1 rounded bg-white/5 text-slate-400">
-                  ?
-                </kbd>
-                <span>for keyboard shortcuts</span>
-              </div>
-            </div>
-          </div>
-        </footer>
-
-        {/* Add Project Modal */}
-        <AddProjectModal
-          isOpen={showAddProjectModal}
-          onClose={() => setShowAddProjectModal(false)}
-          onProjectAdded={handleProjectAdded}
-        />
-
-        {/* Custom font imports */}
-        <style>
-          @import
-          url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-        </style>
-      </div>
-    )
-  }
-
-  // Show "no project selected" state
-  if (!currentProject) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 overflow-hidden">
-        {/* Animated background */}
-        <div className="fixed inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),transparent)]" />
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
-        </div>
-
-        {/* Header */}
-        <header className="relative z-10 border-b border-white/5 backdrop-blur-sm">
-          <div className="max-w-[1800px] mx-auto px-6 py-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
-                    <svg
-                      className="w-6 h-6 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <circle cx="12" cy="12" r="3" strokeWidth="2" />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"
-                      />
-                    </svg>
-                  </div>
-                </div>
-                <div>
-                  <h1
-                    className="text-2xl font-bold text-white tracking-tight"
-                    style={{ fontFamily: 'Outfit, sans-serif' }}
-                  >
-                    Beadworks
-                  </h1>
-                  <p className="text-sm text-slate-400">
-                    Select a project to get started
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <ProjectSelector
-                  onProjectChange={handleProjectChange}
-                  onAddProjectClick={() => setShowAddProjectModal(true)}
-                />
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Empty State */}
-        <main className="relative z-10 flex items-center justify-center min-h-[calc(100vh-88px)]">
-          <div className="text-center max-w-lg mx-auto px-6">
-            {/* Bead illustration */}
-            <div className="mb-8 flex justify-center gap-3">
-              <div
-                className="w-16 h-16 rounded-full"
-                style={{
-                  background:
-                    'radial-gradient(circle at 30% 30%, #ff6b6bdd, #ff6b6b88)',
-                  boxShadow:
-                    '0 8px 32px #ff6b6b40, inset 0 1px 0 rgba(255,255,255,0.3)',
-                }}
-              />
-              <div
-                className="w-16 h-16 rounded-full"
-                style={{
-                  background:
-                    'radial-gradient(circle at 30% 30%, #ffd93ddd, #ffd93d88)',
-                  boxShadow:
-                    '0 8px 32px #ffd93d40, inset 0 1px 0 rgba(255,255,255,0.3)',
-                }}
-              />
-              <div
-                className="w-16 h-16 rounded-full"
-                style={{
-                  background:
-                    'radial-gradient(circle at 30% 30%, #6bcb77dd, #6bcb7788)',
-                  boxShadow:
-                    '0 8px 32px #6bcb7740, inset 0 1px 0 rgba(255,255,255,0.3)',
-                }}
-              />
-            </div>
-
-            <h2
-              className="text-3xl font-bold text-white mb-4"
-              style={{ fontFamily: 'Outfit, sans-serif' }}
-            >
-              No Project Selected
-            </h2>
-            <p className="text-lg text-slate-400 mb-8 leading-relaxed">
-              Select a project from the dropdown above to view and manage your
-              tasks. Each project has its own kanban board and task history.
-            </p>
-
-            {/* Hint */}
-            <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-left">
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
-                  <svg
-                    className="w-5 h-5 text-violet-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <h3
-                    className="text-sm font-semibold text-white mb-1"
-                    style={{ fontFamily: 'Outfit, sans-serif' }}
-                  >
-                    Getting Started
-                  </h3>
-                  <p className="text-sm text-slate-400 leading-relaxed">
-                    Click the project selector above to add a new project. Your
-                    project directory should contain a{' '}
-                    <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">
-                      .beads
-                    </code>{' '}
-                    folder initialized with{' '}
-                    <code className="px-1.5 py-0.5 rounded bg-white/5 text-violet-400">
-                      bd init
-                    </code>
-                    .
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        {/* Footer */}
-        <footer className="fixed bottom-0 left-0 right-0 z-20 border-t border-white/5 bg-slate-950/80 backdrop-blur-sm">
-          <div className="max-w-[1800px] mx-auto px-6 py-3">
-            <div
-              className="flex items-center justify-between text-xs"
-              style={{ fontFamily: 'JetBrains Mono, monospace' }}
-            >
-              <div className="flex items-center gap-6">
-                <span className="text-slate-500">
-                  <span className="text-violet-400">●</span> System Active
                 </span>
               </div>
               <div className="flex items-center gap-2 text-slate-500">
