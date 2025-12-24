@@ -15,3 +15,4 @@ todos.json
 history/
 # Monorepo
 **/node_modules
+.beads/work-sessions.json
