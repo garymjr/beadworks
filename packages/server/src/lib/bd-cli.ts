@@ -6,18 +6,70 @@ import { existsSync } from "fs";
 import { join } from "path";
 
 /**
- * Check if a .beads directory exists at the given path
+ * Check if a .beads directory exists AND is properly initialized
+ * (i.e., has the issues.jsonl database file)
  */
 export function isBeadsInitialized(projectPath: string): boolean {
   const beadsDir = join(projectPath, ".beads");
-  return existsSync(beadsDir);
+  const issuesFile = join(beadsDir, "issues.jsonl");
+  return existsSync(beadsDir) && existsSync(issuesFile);
 }
 
 /**
  * Initialize a new beads database in the project directory
  */
 export async function initBeads(projectPath: string): Promise<any> {
-  return execBdCommand(["init"], projectPath);
+  const { existsSync } = await import("fs");
+
+  // Check if project directory exists
+  if (!existsSync(projectPath)) {
+    throw new Error(`Project directory does not exist: ${projectPath}`);
+  }
+
+  // For init, we need to run in the target directory, not set BEADS_DIR
+  const cmd = ["bd", "init", "--json"];
+
+  console.error(`[bd init] Running in directory: ${projectPath}`);
+
+  const proc = Bun.spawn(cmd, {
+    stdout: "pipe",
+    stderr: "pipe",
+    cwd: projectPath, // Set working directory to project path
+    env: process.env,
+  });
+
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  const exitCode = await proc.exited;
+
+  console.error(`[bd init] Exit code: ${exitCode}`);
+  console.error(`[bd init] stdout: ${stdout.substring(0, 200)}`);
+  console.error(`[bd init] stderr: ${stderr.substring(0, 200)}`);
+
+  if (exitCode !== 0) {
+    throw new Error(`bd init failed (exit ${exitCode}): ${stderr || stdout}`);
+  }
+
+  // Check if .beads was actually created
+  const { join } = await import("path");
+  const beadsDir = join(projectPath, ".beads");
+  const issuesFile = join(beadsDir, "issues.jsonl");
+
+  if (!existsSync(beadsDir)) {
+    throw new Error(`bd init completed but .beads directory was not created`);
+  }
+
+  if (!existsSync(issuesFile)) {
+    throw new Error(`bd init completed but issues.jsonl was not created. Looking for: ${issuesFile}`);
+  }
+
+  // Parse JSON output or return success
+  try {
+    return JSON.parse(stdout);
+  } catch (e) {
+    // init might not return JSON - check if it succeeded anyway
+    return { success: true, output: stdout };
+  }
 }
 
 /**

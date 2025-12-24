@@ -6,7 +6,7 @@ import {
   updateTaskStatus,
   checkProjectInitialized,
   initProject,
-} from '../lib/api/server-fns'
+} from '../lib/api/client'
 import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
 import { ProjectSelector } from '../components/ProjectSelector'
 import { AddProjectModal } from '../components/AddProjectModal'
@@ -91,7 +91,14 @@ function BeadworksKanban() {
   const router = useRouter()
   const search = Route.useSearch()
 
-  // Fetch tasks directly - skip init check for now
+  // First check if project is initialized, then fetch tasks
+  const { data: initStatus } = useQuery({
+    queryKey: ['initStatus', search.projectPath],
+    queryFn: () => checkProjectInitialized(search.projectPath),
+    enabled: !!search.projectPath,
+    retry: false,
+  })
+
   const {
     data: tasks = EMPTY_TASKS,
     error,
@@ -99,11 +106,13 @@ function BeadworksKanban() {
   } = useQuery({
     queryKey: ['tasks', search.projectPath],
     queryFn: () => getTasks(search.projectPath || ''),
-    enabled: !!search.projectPath,
+    enabled: !!search.projectPath && !!initStatus?.initialized,
+    retry: false,
   })
 
   console.log('Render state:', {
     projectPath: search.projectPath,
+    initialized: initStatus?.initialized,
     tasksCount: tasks.length,
     isLoading,
     error,
@@ -482,8 +491,10 @@ function BeadworksKanban() {
     )
   }
 
-  // Show "project not initialized" state when there's an error from the API
-  if (error) {
+  // Show "project not initialized" state when project exists but isn't initialized
+  // or when there's an error fetching tasks
+  const needsInit = initStatus !== undefined && !initStatus.initialized
+  if (needsInit || error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 overflow-hidden">
         {/* Animated background */}
@@ -675,8 +686,10 @@ function BeadworksKanban() {
             >
               <div className="flex items-center gap-6">
                 <span className="text-slate-500">
-                  <span className="text-amber-400">●</span> Needs Initialization
+                  <span className={error ? 'text-red-400' : 'text-amber-400'}>●</span>{' '}
+                  {error ? 'Error Loading Project' : 'Needs Initialization'}
                 </span>
+                {error && <span className="text-red-400">{error.message}</span>}
               </div>
               <div className="flex items-center gap-2 text-slate-500">
                 <span>Press</span>

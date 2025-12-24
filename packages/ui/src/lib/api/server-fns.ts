@@ -20,8 +20,8 @@ export const checkProjectInitialized = createServerFn({
 })
   .inputValidator((projectPath?: string) => projectPath)
   .handler(async ({ data }) => {
-    if (!data) {
-      throw new Error('Project path is required')
+    if (!data || data.trim() === '') {
+      return { initialized: false, path: data || '' }
     }
     const url = new URL(`${API_BASE}/check-initialized`, 'http://localhost')
     url.searchParams.set('project_path', data)
