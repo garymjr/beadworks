@@ -652,10 +652,22 @@ Respond ONLY with the JSON object, nothing else.`;
     let parsed;
     try {
       // Clean up the response - remove any markdown code blocks
-      const cleaned = fullResponse
-        .replace(/```json\s*/g, "")
-        .replace(/```\s*/g, "")
-        .trim();
+      // Handle various formats: ```json ... ```, ``` ... ```, or plain JSON
+      let cleaned = fullResponse.trim();
+
+      // Remove opening markdown code block
+      const jsonMatch = cleaned.match(/```(?:json)?\s*\n?/);
+      if (jsonMatch) {
+        cleaned = cleaned.slice(jsonMatch[0].length);
+      }
+
+      // Remove closing markdown code block
+      const closingMatch = cleaned.match(/```\s*$/);
+      if (closingMatch) {
+        cleaned = cleaned.slice(0, closingMatch.index);
+      }
+
+      cleaned = cleaned.trim();
 
       parsed = JSON.parse(cleaned);
     } catch (parseError) {
@@ -799,10 +811,22 @@ Respond ONLY with the JSON object, nothing else.`;
     let parsed;
     try {
       // Clean up the response - remove any markdown code blocks
-      const cleaned = fullResponse
-        .replace(/```json\s*/g, "")
-        .replace(/```\s*/g, "")
-        .trim();
+      // Handle various formats: ```json ... ```, ``` ... ```, or plain JSON
+      let cleaned = fullResponse.trim();
+
+      // Remove opening markdown code block
+      const jsonMatch = cleaned.match(/```(?:json)?\s*\n?/);
+      if (jsonMatch) {
+        cleaned = cleaned.slice(jsonMatch[0].length);
+      }
+
+      // Remove closing markdown code block
+      const closingMatch = cleaned.match(/```\s*$/);
+      if (closingMatch) {
+        cleaned = cleaned.slice(0, closingMatch.index);
+      }
+
+      cleaned = cleaned.trim();
 
       parsed = JSON.parse(cleaned);
     } catch (parseError) {

@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAgentEvents } from '../hooks/useAgentEvents'
 import {
@@ -18,7 +18,6 @@ import { activeWorkStore } from '../lib/active-work-store'
 import { ProjectSelector } from '../components/ProjectSelector'
 import { AddProjectModal } from '../components/AddProjectModal'
 import { AddTaskModal } from '../components/AddTaskModal'
-import { WorkProgressCard } from '../components/WorkProgressCard'
 import { WorkProgressModal } from '../components/WorkProgressModal'
 import { ActiveAgentIndicator } from '../components/ActiveAgentIndicator'
 import { getCurrentProject } from '../lib/projects'
@@ -105,38 +104,7 @@ function isSubtask(task: Task): boolean {
 // Stable empty array reference to avoid infinite re-renders
 const EMPTY_TASKS: Array<Task> = []
 
-// Wrapper component for WorkProgressCard that uses useAgentEvents hook
-function WorkProgressCardWrapper({
-  session,
-  onComplete,
-  onError,
-  onCancel,
-  onDismiss,
-  onClick,
-}: {
-  session: ActiveWorkSession
-  onComplete?: () => void
-  onError?: () => void
-  onCancel?: () => void
-  onDismiss?: () => void
-  onClick?: () => void
-}) {
-  const workState = useAgentEvents(session.issueId, true)
 
-  return (
-    <WorkProgressCard
-      issueId={session.issueId}
-      issueTitle={session.issueTitle}
-      startedAt={session.startedAt}
-      onComplete={onComplete}
-      onError={onError}
-      onCancel={onCancel}
-      onDismiss={onDismiss}
-      onClick={onClick}
-      workState={workState}
-    />
-  )
-}
 
 // Wrapper component for WorkProgressModal that uses useAgentEvents hook
 function WorkProgressModalWrapper({
@@ -168,9 +136,7 @@ export const Route = createFileRoute('/')({
   }),
 })
 
-// Feature flag: Show separate work progress cards above the board
-// Set to false when task cards show their own active agent indicators
-const SHOW_SEPARATE_PROGRESS_CARDS = true
+
 
 function BeadworksKanban() {
   const router = useRouter()
@@ -298,6 +264,9 @@ function BeadworksKanban() {
   const modalSession = modalSessionId
     ? activeWorkSessions.get(modalSessionId)
     : null
+
+  // Ref to track if we're dragging to prevent click from firing during drag
+  const isDraggingRef = useRef(false)
 
   // Track current project - initialize safely for SSR
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
@@ -452,6 +421,7 @@ function BeadworksKanban() {
   }, [activeWorkSessions])
 
   const handleDragStart = (task: Task) => {
+    isDraggingRef.current = true
     setDraggedTask(task)
   }
 
@@ -540,6 +510,10 @@ function BeadworksKanban() {
   const handleDragEnd = () => {
     setDraggedTask(null)
     setDragOverColumn(null)
+    // Reset drag ref after a short delay to prevent click from firing
+    setTimeout(() => {
+      isDraggingRef.current = false
+    }, 100)
   }
 
   const handleStartWork = async (taskId: string) => {
@@ -1170,24 +1144,7 @@ function BeadworksKanban() {
         </div>
       </header>
 
-      {/* Agent Work Progress Cards (Multiple) */}
-      {activeWorkSessions.size > 0 && (
-        <main className="relative z-10 px-6 pt-4">
-          <div className="max-w-[1800px] mx-auto space-y-3">
-            {Array.from(activeWorkSessions.values()).map((session) => (
-              <WorkProgressCardWrapper
-                key={session.issueId}
-                session={session}
-                onComplete={() => handleWorkComplete(session.issueId)}
-                onError={() => handleWorkError(session.issueId)}
-                onCancel={() => handleWorkCancel(session.issueId)}
-                onDismiss={() => handleWorkComplete(session.issueId)}
-                onClick={() => setModalSessionId(session.issueId)}
-              />
-            ))}
-          </div>
-        </main>
-      )}
+
 
       {/* Main Board */}
       <main className="relative z-10 p-6">
@@ -1316,11 +1273,20 @@ function BeadworksKanban() {
                             draggable
                             onDragStart={() => handleDragStart(task)}
                             onDragEnd={handleDragEnd}
-                            className={`group relative cursor-grab active:cursor-grabbing transition-all duration-300 ${
+                            onClick={() => {
+                              if (!isDraggingRef.current && activeWorkSessions.has(task.id)) {
+                                setModalSessionId(task.id)
+                              }
+                            }}
+                            className={`group relative transition-all duration-300 ${
+                              activeWorkSessions.has(task.id)
+                                ? 'cursor-pointer hover:scale-[1.02]'
+                                : 'cursor-grab active:cursor-grabbing hover:scale-[1.02]'
+                            } ${
                               draggedTask?.id === task.id ||
                               isUpdating === task.id
                                 ? 'opacity-50 scale-95'
-                                : 'hover:scale-[1.02]'
+                                : ''
                             }`}
                           >
                             {/* Glow effect */}
@@ -1331,7 +1297,11 @@ function BeadworksKanban() {
 
                             {/* Bead task card */}
                             <div
-                              className={`relative bg-slate-900/80 backdrop-blur-sm rounded-xl border border-white/10 p-4 shadow-xl ${getPriorityGlow(priority)} transition-shadow duration-300`}
+                              className={`relative bg-slate-900/80 backdrop-blur-sm rounded-xl border p-4 shadow-xl transition-all duration-300 ${
+                                activeWorkSessions.has(task.id)
+                                  ? 'border-violet-500/50 shadow-[0_0_30px_rgba(139,92,246,0.3)]'
+                                  : 'border-white/10'
+                              } ${getPriorityGlow(priority)}`}
                             >
                               {/* Bead indicator */}
                               <div className="absolute -top-3 left-6">
@@ -1359,13 +1329,21 @@ function BeadworksKanban() {
                                 </p>
                                 )}
 
-                                {/* Active Agent Indicator */}
+                                {/* Active Agent Indicator - Shows when agent is working on this task */}
                                 {activeWorkSessions.has(task.id) && (
-                                  <ActiveAgentIndicator
-                                    issueId={task.id}
-                                    compact={true}
-                                    onClick={() => setModalSessionId(task.id)}
-                                  />
+                                  <div
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setModalSessionId(task.id)
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    <ActiveAgentIndicator
+                                      issueId={task.id}
+                                      compact={false}
+                                      onClick={() => setModalSessionId(task.id)}
+                                    />
+                                  </div>
                                 )}
 
                                 {/* Start Work Button (only in ready column) */}
