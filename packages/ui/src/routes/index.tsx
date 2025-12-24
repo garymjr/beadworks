@@ -20,6 +20,7 @@ import { AddProjectModal } from '../components/AddProjectModal'
 import { AddTaskModal } from '../components/AddTaskModal'
 import { WorkProgressModal } from '../components/WorkProgressModal'
 import { ActiveAgentIndicator } from '../components/ActiveAgentIndicator'
+import StatusBadge from '../components/StatusBadge'
 import { getCurrentProject } from '../lib/projects'
 import type { Task } from '../lib/api/types'
 import type { Project } from '../lib/projects'
@@ -1121,18 +1122,18 @@ function BeadworksKanban() {
                 onAddProjectClick={() => setShowAddProjectModal(true)}
               />
 
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-                <div
-                  className={`w-2 h-2 rounded-full ${error ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`}
-                />
-                <span
-                  className="text-sm text-slate-300"
-                  style={{ fontFamily: 'JetBrains Mono, monospace' }}
-                >
-                  {columns.reduce((acc, col) => acc + col.tasks.length, 0)}{' '}
-                  tasks loaded
-                </span>
-              </div>
+              <StatusBadge
+                count={columns.reduce((acc, col) => acc + col.tasks.length, 0)}
+                label="tasks loaded"
+                status={error ? 'error' : 'success'}
+                showPulse={!error}
+              />
+              <StatusBadge
+                count={activeWorkSessions.size}
+                label="agents running"
+                status={activeWorkSessions.size > 0 ? 'success' : 'neutral'}
+                showPulse={activeWorkSessions.size > 0}
+              />
               <button
                 onClick={() => setShowAddTaskModal(true)}
                 className="px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-medium hover:shadow-lg hover:shadow-purple-500/25 transition-all duration-300 hover:scale-105"
