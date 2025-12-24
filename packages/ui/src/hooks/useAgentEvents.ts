@@ -54,6 +54,8 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const retryCountRef = useRef(0)
   const lastEventTimeRef = useRef(Date.now())
+  // Track current status for error handler (avoiding closure issues)
+  const currentStatusRef = useRef<AgentWorkState['status']>(initialState.status)
 
   const connect = useCallback(() => {
     if (!enabled || !issueId) return
@@ -102,29 +104,36 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
     eventSource.onmessage = (event) => {
       try {
         lastEventTimeRef.current = Date.now()
-        const data: AgentEvent = JSON.parse(event.data)
+        const data = JSON.parse(event.data)
 
-        console.log('[useAgentEvents] Received event:', data.type)
+        console.log('[useAgentEvents] Received event:', data.type, data)
 
         setState((prevState) => {
           const newState = { ...prevState }
 
           switch (data.type) {
+            case 'connected':
+              // Connection confirmed, but don't change state yet
+              // The next events will update the actual status
+              console.log('[useAgentEvents] Connection confirmed')
+              break
             case 'status':
               newState.status = data.data.status
               newState.currentStep = data.data.message || newState.currentStep
+              console.log('[useAgentEvents] Status update:', data.data.status, data.data.message)
               break
             case 'progress':
               newState.progress = data.data.percent
               newState.currentStep = data.data.currentStep
               newState.totalSteps = data.data.totalSteps
+              console.log('[useAgentEvents] Progress:', data.data.percent, data.data.currentStep)
               break
             case 'step':
               // Don't change state, just add to events
               break
             case 'error':
               newState.status = 'error'
-              newState.error = data.data
+              newState.error = { message: data.data.error, recoverable: data.data.recoverable, canRetry: data.data.canRetry }
               break
             case 'complete':
               newState.status = data.data.success ? 'complete' : 'error'
@@ -134,8 +143,15 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
               break
           }
 
-          // Add event to history
-          newState.events = [...prevState.events, data]
+          // Update the ref to track current status for error handler
+          if (newState.status !== prevState.status) {
+            currentStatusRef.current = newState.status
+          }
+
+          // Add event to history (skip connected events as they're just metadata)
+          if (data.type !== 'connected') {
+            newState.events = [...prevState.events, data]
+          }
 
           // Update computed properties
           newState.isComplete =
@@ -158,10 +174,12 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
       setState((prev) => ({ ...prev, isConnected: false }))
 
       // Check if work is actually complete (we might have missed the final event)
+      // Use ref to get current status, not closure value
+      const currentStatus = currentStatusRef.current
       const workIsComplete =
-        state.status === 'complete' ||
-        state.status === 'error' ||
-        state.status === 'cancelled'
+        currentStatus === 'complete' ||
+        currentStatus === 'error' ||
+        currentStatus === 'cancelled'
 
       if (workIsComplete) {
         console.log('[useAgentEvents] Work is complete, not reconnecting')
@@ -193,7 +211,7 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
         )
       }
     }
-  }, [issueId, enabled, state.status])
+  }, [issueId, enabled])
 
   const disconnect = useCallback(() => {
     if (eventSourceRef.current) {
@@ -211,6 +229,7 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
   // Reset state when issueId changes
   useEffect(() => {
     setState(initialState)
+    currentStatusRef.current = initialState.status
     setConnectionError(null)
     retryCountRef.current = 0
   }, [issueId])
@@ -240,10 +259,19 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
 
   // Monitor for stale connections (no events for 2 minutes)
   useEffect(() => {
-    if (!isConnected || state.isComplete) return
+    if (!isConnected) return
 
     const checkInterval = setInterval(() => {
       const timeSinceLastEvent = Date.now() - lastEventTimeRef.current
+      const currentStatus = currentStatusRef.current
+      const workIsComplete =
+        currentStatus === 'complete' ||
+        currentStatus === 'error' ||
+        currentStatus === 'cancelled'
+
+      // Don't reconnect if work is complete or events are recent
+      if (workIsComplete) return
+
       if (timeSinceLastEvent > 2 * 60 * 1000) {
         console.warn(
           '[useAgentEvents] No events for 2 minutes, reconnecting...',
@@ -253,7 +281,7 @@ export function useAgentEvents(issueId: string, enabled: boolean = true) {
     }, 30000) // Check every 30 seconds
 
     return () => clearInterval(checkInterval)
-  }, [isConnected, reconnect, state.isComplete])
+  }, [isConnected, reconnect])
 
   return {
     ...state,
