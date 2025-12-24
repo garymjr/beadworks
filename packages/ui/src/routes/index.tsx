@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getTasks,
   updateTaskStatus,
@@ -91,6 +91,7 @@ export const Route = createFileRoute('/')({
 function BeadworksKanban() {
   const router = useRouter()
   const search = Route.useSearch()
+  const queryClient = useQueryClient()
 
   // First check if project is initialized, then fetch tasks
   const { data: initStatus } = useQuery({
@@ -488,7 +489,7 @@ function BeadworksKanban() {
         <AddTaskModal
           isOpen={showAddTaskModal}
           onClose={() => setShowAddTaskModal(false)}
-          onTaskCreated={() => router.invalidate()}
+          onTaskCreated={() => queryClient.invalidateQueries({ queryKey: ['tasks', search.projectPath] })}
           projectPath={currentProject?.path}
         />
 
@@ -723,7 +724,7 @@ function BeadworksKanban() {
         <AddTaskModal
           isOpen={showAddTaskModal}
           onClose={() => setShowAddTaskModal(false)}
-          onTaskCreated={() => router.invalidate()}
+          onTaskCreated={() => queryClient.invalidateQueries({ queryKey: ['tasks', search.projectPath] })}
           projectPath={currentProject?.path}
         />
 
@@ -1054,7 +1055,7 @@ function BeadworksKanban() {
       <AddTaskModal
         isOpen={showAddTaskModal}
         onClose={() => setShowAddTaskModal(false)}
-        onTaskCreated={() => router.invalidate()}
+        onTaskCreated={() => queryClient.invalidateQueries({ queryKey: ['tasks', search.projectPath] })}
         projectPath={currentProject?.path}
       />
 

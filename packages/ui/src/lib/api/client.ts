@@ -317,3 +317,25 @@ export async function getLabels(projectPath?: string) {
 export async function getRepos(projectPath?: string) {
   return fetchFromAPI('/repos', undefined, projectPath)
 }
+
+// ============================================================================
+// AI-powered task generation
+// ============================================================================
+
+/**
+ * Generate title and labels from a description using the pi-agent
+ */
+export async function generateTask(
+  description: string,
+  type?: 'bug' | 'feature' | 'task' | 'epic' | 'chore',
+  projectPath?: string,
+) {
+  return fetchFromAPI(
+    '/generate-task',
+    {
+      method: 'POST',
+      body: JSON.stringify({ description, type }),
+    },
+    projectPath,
+  )
+}

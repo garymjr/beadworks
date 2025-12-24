@@ -443,4 +443,116 @@ bdRoutes.get("/repos", async (c) => {
   }
 });
 
+// ============================================================================
+// AI-powered task generation
+// ============================================================================
+
+/**
+ * POST /api/bd/generate-task
+ * Generate title and labels from a description using the pi-agent
+ */
+const generateTaskSchema = z.object({
+  description: z.string().min(1, "Description is required"),
+  type: z.enum(["bug", "feature", "task", "epic", "chore"]).optional(),
+});
+
+bdRoutes.post("/generate-task", zValidator("json", generateTaskSchema), async (c) => {
+  const { description, type = "task" } = c.req.valid("json");
+
+  try {
+    // Import pi-agent
+    const { getPiAgentSession } = await import("../lib/pi-agent.js");
+    const session = getPiAgentSession();
+
+    if (!session) {
+      return c.json({ error: "Pi-agent session not initialized" }, 500);
+    }
+
+    // Create a prompt to generate title and labels
+    const prompt = `You are a task management assistant. Based on the following description, generate a concise title and relevant labels.
+
+Description: "${description}"
+Type: ${type}
+
+Respond with a JSON object in the following format (no markdown, no explanation):
+{
+  "title": "concise title (max 80 chars)",
+  "labels": ["label1", "label2", "label3"]
+}
+
+Guidelines for title:
+- Be concise and action-oriented
+- Start with a verb if it's a task or feature
+- Max 80 characters
+- Should clearly communicate what the issue is about
+
+Guidelines for labels:
+- Generate 3-5 relevant labels
+- Use lowercase with hyphens for multi-word labels
+- Common labels: frontend, backend, database, api, ui, bug, feature, enhancement, refactor, tests, docs
+- Include technology-specific labels if applicable (e.g., typescript, react, postgres)
+- Include priority-related labels if the issue seems urgent (e.g., urgent, high-priority)
+
+Respond ONLY with the JSON object, nothing else.`;
+
+    // Subscribe to capture the response
+    let fullResponse = "";
+    let agentComplete = false;
+
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === "message_update") {
+        const msgEvent = event.assistantMessageEvent;
+        if (msgEvent.type === "text_delta") {
+          fullResponse += msgEvent.delta;
+        }
+      } else if (event.type === "agent_end") {
+        agentComplete = true;
+      }
+    });
+
+    // Send prompt and wait for response
+    await session.prompt(prompt);
+
+    // Wait for the agent to complete processing
+    const maxWaitTime = 30000; // 30 seconds max
+    const startTime = Date.now();
+    while (!agentComplete && Date.now() - startTime < maxWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    unsubscribe();
+
+    if (!agentComplete) {
+      console.warn("Agent did not complete in time, using partial response");
+    }
+
+    // Try to parse the response as JSON
+    let parsed;
+    try {
+      // Clean up the response - remove any markdown code blocks
+      const cleaned = fullResponse
+        .replace(/```json\s*/g, "")
+        .replace(/```\s*/g, "")
+        .trim();
+
+      parsed = JSON.parse(cleaned);
+    } catch (parseError) {
+      console.error("Failed to parse AI response:", fullResponse);
+      // Fallback: extract from the description
+      parsed = {
+        title: description.split("\n")[0].substring(0, 80),
+        labels: ["ai-generated"]
+      };
+    }
+
+    return c.json({
+      title: parsed.title || description.substring(0, 80),
+      labels: parsed.labels || []
+    });
+  } catch (error: any) {
+    console.error("Failed to generate task:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 export { bdRoutes };

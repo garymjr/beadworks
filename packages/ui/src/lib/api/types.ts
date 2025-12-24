@@ -26,7 +26,7 @@ export interface CreateTaskInput {
   title: string
   description?: string
   type?: 'bug' | 'feature' | 'task' | 'epic' | 'chore'
-  priority?: number
+  priority?: string
   assignee?: string
   labels?: Array<string>
   estimate?: number
