@@ -345,6 +345,24 @@ export async function generatePlan(issueId: string, projectPath?: string) {
 }
 
 /**
+ * Generate subtasks and start work on an issue
+ */
+export async function startWorkWithSubtasks(input: {
+  issue_id: string
+  project_path?: string
+  timeout?: number
+}) {
+  return fetchFromAPI(
+    '/generate-and-start',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+    undefined, // Don't add project_path as query param since it's in body
+  )
+}
+
+/**
  * Generate title, description, and labels from a prompt using the pi-agent
  */
 export async function generateTask(
