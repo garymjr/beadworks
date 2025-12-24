@@ -8,7 +8,7 @@ import { getPiAgentSession } from './pi-agent.js'
 import { updateIssue, closeIssue, addComment, getSubtasks, showIssue } from './bd-cli.js'
 import { workStore } from './work-store.js'
 import { buildPromptForSubtask } from './prompts.js'
-import { broadcastStatus, broadcastProgress, broadcastStep, broadcastError, broadcastComplete } from './events.js'
+import { broadcastStep, broadcastError, broadcastComplete } from './events.js'
 
 export interface WorkOptions {
   projectPath?: string
@@ -50,7 +50,7 @@ export async function startWorkOnIssue(
   const { workId } = workSession
 
   // Update issue status to in_progress
-  broadcastStatus(issueId, workId, 'starting', 'Claiming issue...')
+  workStore.updateStatus(workId, 'starting', 'Claiming issue...')
   await updateIssue(issueId, { status: 'in_progress' }, projectPath)
 
   // Start the agent work in the background with error handling
@@ -85,7 +85,7 @@ async function runAgentWork(
 
   try {
     // Get subtasks for this issue
-    broadcastStatus(issueId, workId, 'thinking', 'Fetching subtasks...')
+    workStore.updateStatus(workId, 'thinking', 'Fetching subtasks...')
     const { subtasks, progress } = await getSubtasks(issueId, projectPath)
 
     console.log(`[AgentWorkManager] Found ${subtasks.length} subtasks (${progress.completed} already complete)`)
@@ -95,7 +95,7 @@ async function runAgentWork(
     totalSubtasks = pendingSubtasks.length
 
     if (pendingSubtasks.length === 0) {
-      broadcastStatus(issueId, workId, 'working', 'All subtasks already complete!')
+      workStore.updateStatus(workId, 'working', 'All subtasks already complete!')
       await closeIssueWithReason(issueId, 'All subtasks were already completed', projectPath)
       workStore.completeSession(workId, true, 'All subtasks were already completed', [])
       return {
@@ -113,8 +113,7 @@ async function runAgentWork(
       const subtaskNum = i + 1
       const percentComplete = Math.round((i / totalSubtasks) * 100)
 
-      broadcastProgress(
-        issueId,
+      workStore.updateProgress(
         workId,
         percentComplete,
         `Working on subtask ${subtaskNum}/${totalSubtasks}: ${subtask.title}`,
@@ -136,8 +135,7 @@ async function runAgentWork(
         completedSubtasks.push(subtask.id)
         result.filesChanged.forEach((f) => allFilesChanged.add(f))
 
-        broadcastProgress(
-          issueId,
+        workStore.updateProgress(
           workId,
           Math.round(((i + 1) / totalSubtasks) * 100),
           `Completed subtask ${subtaskNum}/${totalSubtasks}: ${subtask.title}`,
@@ -231,7 +229,7 @@ async function processSubtask(
 
   // Mark subtask as in_progress
   await updateIssue(subtask.id, { status: 'in_progress' }, projectPath)
-  broadcastStatus(parentIssueId, workId, 'working', `Starting: ${subtask.title}`)
+  workStore.updateStatus(workId, 'working', `Starting: ${subtask.title}`)
 
   try {
     // Build prompt for this subtask
@@ -311,7 +309,7 @@ async function processSubtask(
     await addComment(subtask.id, `✅ Completed by agent:\n\n${summary}`, projectPath)
     await closeIssue(subtask.id, projectPath)
 
-    broadcastStatus(parentIssueId, workId, 'working', `Completed: ${subtask.title}`)
+    workStore.updateStatus(workId, 'working', `Completed: ${subtask.title}`)
 
     return {
       success: true,
