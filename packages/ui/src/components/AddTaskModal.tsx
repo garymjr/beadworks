@@ -19,7 +19,11 @@ const ISSUE_TYPES = [
 ] as const
 
 const PRIORITIES = [
-  { value: 0, label: 'Critical', description: 'Security, data loss, broken builds' },
+  {
+    value: 0,
+    label: 'Critical',
+    description: 'Security, data loss, broken builds',
+  },
   { value: 1, label: 'High', description: 'Major features, important bugs' },
   { value: 2, label: 'Medium', description: 'Default, nice-to-have' },
   { value: 3, label: 'Low', description: 'Polish, optimization' },
@@ -33,12 +37,14 @@ export function AddTaskModal({
   projectPath,
 }: AddTaskModalProps) {
   const [description, setDescription] = useState('')
-  const [type, setType] = useState<'bug' | 'feature' | 'task' | 'epic' | 'chore'>('task')
+  const [type, setType] = useState<
+    'bug' | 'feature' | 'task' | 'epic' | 'chore'
+  >('task')
   const [priority, setPriority] = useState(2)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [generatedTitle, setGeneratedTitle] = useState<string | null>(null)
-  const [generatedLabels, setGeneratedLabels] = useState<string[] | null>(null)
+  const [generatedLabels, setGeneratedLabels] = useState<Array<string> | null>(null)
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -66,7 +72,9 @@ export function AddTaskModal({
     } catch (error) {
       console.error('Failed to generate title and labels:', error)
       alert(
-        error instanceof Error ? error.message : 'Failed to generate title and labels',
+        error instanceof Error
+          ? error.message
+          : 'Failed to generate title and labels',
       )
     } finally {
       setIsGenerating(false)
@@ -111,9 +119,7 @@ export function AddTaskModal({
       onTaskCreated?.()
     } catch (error) {
       console.error('Failed to create task:', error)
-      alert(
-        error instanceof Error ? error.message : 'Failed to create task',
-      )
+      alert(error instanceof Error ? error.message : 'Failed to create task')
     } finally {
       setIsSubmitting(false)
     }
@@ -185,7 +191,8 @@ export function AddTaskModal({
               autoFocus
             />
             <p className="text-xs text-slate-500 mt-1.5">
-              The AI will generate a concise title and relevant labels from your description
+              The AI will generate a concise title and relevant labels from your
+              description
             </p>
           </div>
 
@@ -296,7 +303,9 @@ export function AddTaskModal({
                     d="M13 10V3L4 14h7v7l9-11h-7z"
                   />
                 </svg>
-                <span className="text-xs font-medium uppercase tracking-wide">AI Generated</span>
+                <span className="text-xs font-medium uppercase tracking-wide">
+                  AI Generated
+                </span>
               </div>
 
               {/* Generated Title */}
@@ -368,10 +377,20 @@ export function AddTaskModal({
                 generateTitleAndLabels()
               }
             }}
-            disabled={isGenerating || isSubmitting || (!generatedTitle && !description.trim())}
+            disabled={
+              isGenerating ||
+              isSubmitting ||
+              (!generatedTitle && !description.trim())
+            }
             className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isGenerating ? 'Generating...' : isSubmitting ? 'Creating...' : generatedTitle ? 'Create Task' : 'Generate Title & Labels'}
+            {isGenerating
+              ? 'Generating...'
+              : isSubmitting
+                ? 'Creating...'
+                : generatedTitle
+                  ? 'Create Task'
+                  : 'Generate Title & Labels'}
           </button>
         </div>
       </div>

@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { DirectoryPicker } from './DirectoryPicker'
 import {
   addProject,
   getCurrentProject,
   getProjects,
   setCurrentProjectId,
 } from '../lib/projects'
+import { DirectoryPicker } from './DirectoryPicker'
 import type { Project } from '../lib/projects'
 
 interface AddProjectModalProps {

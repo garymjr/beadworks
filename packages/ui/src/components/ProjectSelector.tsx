@@ -72,7 +72,9 @@ export function ProjectSelector({
     }
 
     return () => {
-      document.removeEventListener('click', handleClickOutside, { capture: true })
+      document.removeEventListener('click', handleClickOutside, {
+        capture: true,
+      })
     }
   }, [isOpen])
 
@@ -90,7 +92,8 @@ export function ProjectSelector({
 
       // Check if dropdown would overflow on the right (estimated width 288px = w-72)
       const dropdownWidth = 288
-      const overflowRight = triggerRect.left + dropdownWidth > viewportWidth - 16
+      const overflowRight =
+        triggerRect.left + dropdownWidth > viewportWidth - 16
 
       setDropdownPosition({
         top: true, // Always show below for now
@@ -251,10 +254,11 @@ export function ProjectSelector({
                   {projects.map((project) => (
                     <div
                       key={project.id}
-                      className={`relative group flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${currentProject?.id === project.id
-                        ? 'bg-violet-500/10'
-                        : 'hover:bg-white/5'
-                        }`}
+                      className={`relative group flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                        currentProject?.id === project.id
+                          ? 'bg-violet-500/10'
+                          : 'hover:bg-white/5'
+                      }`}
                       onClick={() => handleSelectProject(project)}
                     >
                       {/* Bead indicator */}
