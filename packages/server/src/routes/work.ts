@@ -252,18 +252,20 @@ workRoutes.post('/start', zValidator('json', startWorkSchema), async (c) => {
 /**
  * GET /api/work/status/:issueId
  * Get the status of work on an issue
+ * Returns 404 if no active session exists
  */
 workRoutes.get('/status/:issueId', async (c) => {
   const issueId = c.req.param('issueId')
-  
-  try {
-    const status = getWorkStatus(issueId)
-    return c.json(status)
-  } catch (error: any) {
+
+  const status = getWorkStatus(issueId)
+
+  if (!status) {
     return c.json({
-      error: error.message,
+      error: 'No active work session found for this issue',
     }, 404)
   }
+
+  return c.json(status)
 })
 
 /**

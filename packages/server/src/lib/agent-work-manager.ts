@@ -7,8 +7,9 @@
 import { getPiAgentSession } from './pi-agent.js'
 import { updateIssue, closeIssue, addComment, getSubtasks, showIssue } from './bd-cli.js'
 import { workStore } from './work-store.js'
-import { buildPromptForSubtask } from './prompts.js'
+import { buildPromptForSubtask, buildPlanPrompt } from './prompts.js'
 import { broadcastStep, broadcastError, broadcastComplete } from './events.js'
+import { setPlanningThinkingLevel, setExecutionThinkingLevel, resetThinkingLevel } from './agent-thinking.js'
 
 export interface WorkOptions {
   projectPath?: string
@@ -94,6 +95,10 @@ async function runAgentWork(
     const pendingSubtasks = subtasks.filter((st: any) => st.status !== 'closed')
     totalSubtasks = pendingSubtasks.length
 
+    // Set thinking level to 'off' for execution phase (faster processing)
+    setExecutionThinkingLevel(workId)
+    console.log('[AgentWorkManager] Execution phase: thinking level set to off')
+
     if (pendingSubtasks.length === 0) {
       workStore.updateStatus(workId, 'working', 'All subtasks already complete!')
       await closeIssueWithReason(issueId, 'All subtasks were already completed', projectPath)
@@ -171,6 +176,10 @@ async function runAgentWork(
       workStore.completeSession(workId, false, summary, changedFiles)
     }
 
+    // Reset thinking level after work is complete
+    resetThinkingLevel(workId)
+    console.log('[AgentWorkManager] Work complete: thinking level reset')
+
     return {
       success,
       workId,
@@ -183,6 +192,10 @@ async function runAgentWork(
 
     // Mark session as errored
     workStore.errorSession(workId, error.message, false, false)
+
+    // Reset thinking level on error
+    resetThinkingLevel(workId)
+    console.log('[AgentWorkManager] Error occurred: thinking level reset')
 
     // Reset issue status to open if it failed
     try {
@@ -478,19 +491,23 @@ export async function cancelWork(issueId: string): Promise<{ status: string }> {
 
 /**
  * Get the status of work on an issue
+ * Returns null if no active session exists for the issue
  */
 export function getWorkStatus(issueId: string) {
   const session = workStore.getActiveSession(issueId)
   if (!session) {
-    return { status: 'not_found' }
+    return null
   }
 
   return {
     workId: session.workId,
+    issueId: session.issueId,
     status: session.status,
     progress: session.progress,
     currentStep: session.currentStep,
+    totalSteps: session.totalSteps,
     startTime: session.startTime,
+    endTime: session.endTime,
     error: session.error,
     result: session.result,
   }
