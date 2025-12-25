@@ -19,7 +19,9 @@ import { AddProjectModal } from '../components/AddProjectModal'
 import { AddTaskModal } from '../components/AddTaskModal'
 import { WorkProgressModal } from '../components/WorkProgressModal'
 import { ActiveAgentIndicator } from '../components/ActiveAgentIndicator'
+import { AgentPoolStatusBadge } from '../components/AgentPoolStatusBadge'
 import StatusBadge from '../components/StatusBadge'
+import { useAgentPoolStatus } from '../hooks/useAgentPoolStatus'
 import { getCurrentProject } from '../lib/projects'
 import type {AgentWorkState} from '../hooks/useAgentEvents';
 import type { Task } from '../lib/api/types'
@@ -171,6 +173,11 @@ function BeadworksKanban() {
     isLoading,
     error,
   })
+
+  // Fetch agent pool status for real-time display
+  const { poolStatus, isLoading: isPoolLoading, error: poolError } = useAgentPoolStatus(
+    !!search.projectPath && !!initStatus?.initialized,
+  )
 
   // Base column definitions
   const baseColumns: Array<Column> = [
@@ -1039,11 +1046,10 @@ function BeadworksKanban() {
                 status={error ? 'error' : 'success'}
                 showPulse={!error}
               />
-              <StatusBadge
-                count={activeWorkSessions.size}
-                label="agents running"
-                status={activeWorkSessions.size > 0 ? 'success' : 'neutral'}
-                showPulse={activeWorkSessions.size > 0}
+              <AgentPoolStatusBadge
+                poolStatus={poolStatus}
+                isLoading={isPoolLoading}
+                error={poolError}
               />
               <button
                 onClick={() => setShowAddTaskModal(true)}
