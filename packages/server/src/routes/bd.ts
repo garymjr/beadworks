@@ -146,15 +146,79 @@ function getDbPath(c: any): string | undefined {
   if (projectPath) {
     return projectPath;
   }
-  
+
   // Check for X-Project-Path header
   const headerPath = c.req.header("X-Project-Path");
   if (headerPath) {
     return headerPath;
   }
-  
+
   // Default to undefined (uses BEADS_DIR env var or auto-discovery)
   return undefined;
+}
+
+/**
+ * Process subtasks to consolidate test-related tasks
+ * - Detects test-related subtasks by title/description keywords
+ * - Consolidates multiple test subtasks into a single one
+ * - Ensures test subtask (if any) is last with lowest priority (4)
+ */
+function processSubtasks(subtasks: any[]): any[] {
+  if (!Array.isArray(subtasks) || subtasks.length === 0) {
+    return subtasks;
+  }
+
+  // Keywords that indicate a test-related subtask
+  const testKeywords = [
+    'test', 'testing', 'tests', 'unit test', 'integration test', 'e2e test',
+    'spec', 'jest', 'vitest', 'cypress', 'playwright', 'mock', 'coverage'
+  ];
+
+  // Separate test and non-test subtasks
+  const testSubtasks: any[] = [];
+  const nonTestSubtasks: any[] = [];
+
+  for (const subtask of subtasks) {
+    const title = (subtask.title || '').toLowerCase();
+    const description = (subtask.description || '').toLowerCase();
+    const combined = `${title} ${description}`;
+
+    const isTestRelated = testKeywords.some(keyword => combined.includes(keyword));
+
+    if (isTestRelated) {
+      testSubtasks.push(subtask);
+    } else {
+      nonTestSubtasks.push(subtask);
+    }
+  }
+
+  // If no test subtasks, return as-is
+  if (testSubtasks.length === 0) {
+    return subtasks;
+  }
+
+  // If only one test subtask exists, just ensure it's last with priority 4
+  if (testSubtasks.length === 1) {
+    const testSubtask = {
+      ...testSubtasks[0],
+      priority: '4', // Lowest priority
+    };
+    return [...nonTestSubtasks, testSubtask];
+  }
+
+  // Multiple test subtasks - consolidate into one
+  const consolidatedTestDesc = testSubtasks
+    .map(st => `- ${st.title}${st.description ? ': ' + st.description : ''}`)
+    .join('\n');
+
+  const consolidatedTestSubtask = {
+    title: 'Add tests',
+    description: `Add tests for the implemented functionality:\n\n${consolidatedTestDesc}`,
+    type: 'task',
+    priority: '4', // Lowest priority
+  };
+
+  return [...nonTestSubtasks, consolidatedTestSubtask];
 }
 
 // ============================================================================
@@ -662,7 +726,7 @@ You are a senior software engineer and technical lead. Your job is to break down
 Break down this issue into 3-8 specific implementation steps. Think about:
 - What files need to be created or modified?
 - What functions or components need to be written?
-- What tests need to be added?
+
 - Are there any configuration changes needed?
 - Should there be a data migration or schema change?
 - What about error handling and edge cases?
@@ -679,18 +743,20 @@ Labels: ${issueLabels.join(", ") || "none"}
 - This is a REAL issue that needs to be IMPLEMENTED
 - Do NOT generate meta-tasks like "create subtasks" or "plan implementation"
 - Generate ACTUAL implementation steps that a developer would execute
-- Each subtask should represent actual code to write, tests to write, or files to modify
+- Each subtask should represent actual code to write or files to modify
 - Avoid using single quotes in descriptions - use double quotes or rephrase
 - Keep all descriptions on one logical line (no embedded newlines)
 - Do not use markdown code blocks within JSON strings
+- Tests are OPTIONAL; only create test subtasks if specifically required
+- If tests are needed, create ONE test subtask MAXIMUM, placed LAST with LOWEST priority
 </CONSTRAINTS>
 
 <EXAMPLES>
 GOOD subtask title: "Create REST API endpoint for user registration"
 GOOD subtask description: "Add POST /api/users/register route in src/routes/users.ts. Implement input validation, password hashing with bcrypt, and user creation. Return 201 with user object or 400 for validation errors."
 
-GOOD subtask title: "Add unit tests for payment processing"
-GOOD subtask description: "Create test file src/services/payment.test.ts. Add tests for successful payment, failed payment, and edge cases like insufficient funds. Use jest mock for Stripe API."
+GOOD subtask title: "Implement user profile component"
+GOOD subtask description: "Create UserProfile component in src/components/UserProfile.tsx. Fetch user data from API; display profile information; handle loading and error states."
 
 BAD subtask titles: "Create subtasks for this issue", "Plan the implementation approach", "Research the best way to implement"
 </EXAMPLES>
@@ -812,12 +878,16 @@ CRITICAL JSON REQUIREMENTS:
     // Create subtasks
     const createdSubtasks = [];
     if (parsed.subtasks && Array.isArray(parsed.subtasks)) {
-      for (const subtask of parsed.subtasks) {
+      // Process subtasks to consolidate test tasks and ensure proper priorities
+      const processedSubtasks = processSubtasks(parsed.subtasks);
+
+      for (const subtask of processedSubtasks) {
         try {
           const newIssue = await bd.createIssue({
             title: subtask.title,
             description: subtask.description || "",
             type: subtask.type || "task",
+            priority: subtask.priority || "2", // Use processed priority or default
             parent: issue_id,
           }, project_path);
 
@@ -912,7 +982,7 @@ You are a senior software engineer and technical lead. Your job is to break down
 Break down this issue into 3-8 specific implementation steps. Think about:
 - What files need to be created or modified?
 - What functions or components need to be written?
-- What tests need to be added?
+
 - Are there any configuration changes needed?
 - Should there be a data migration or schema change?
 - What about error handling and edge cases?
@@ -929,18 +999,20 @@ Labels: ${issueLabels.join(", ") || "none"}
 - This is a REAL issue that needs to be IMPLEMENTED
 - Do NOT generate meta-tasks like "create subtasks" or "plan implementation"
 - Generate ACTUAL implementation steps that a developer would execute
-- Each subtask should represent actual code to write, tests to write, or files to modify
+- Each subtask should represent actual code to write or files to modify
 - Avoid using single quotes in descriptions - use double quotes or rephrase
 - Keep all descriptions on one logical line (no embedded newlines)
 - Do not use markdown code blocks within JSON strings
+- Tests are OPTIONAL; only create test subtasks if specifically required
+- If tests are needed, create ONE test subtask MAXIMUM, placed LAST with LOWEST priority
 </CONSTRAINTS>
 
 <EXAMPLES>
 GOOD subtask title: "Create REST API endpoint for user registration"
 GOOD subtask description: "Add POST /api/users/register route in src/routes/users.ts. Implement input validation, password hashing with bcrypt, and user creation. Return 201 with user object or 400 for validation errors."
 
-GOOD subtask title: "Add unit tests for payment processing"
-GOOD subtask description: "Create test file src/services/payment.test.ts. Add tests for successful payment, failed payment, and edge cases like insufficient funds. Use jest mock for Stripe API."
+GOOD subtask title: "Implement user profile component"
+GOOD subtask description: "Create UserProfile component in src/components/UserProfile.tsx. Fetch user data from API; display profile information; handle loading and error states."
 
 BAD subtask titles: "Create subtasks for this issue", "Plan the implementation approach", "Research the best way to implement"
 </EXAMPLES>
@@ -1058,12 +1130,16 @@ CRITICAL JSON REQUIREMENTS:
     // Create subtasks
     const createdSubtasks = [];
     if (parsed.subtasks && Array.isArray(parsed.subtasks)) {
-      for (const subtask of parsed.subtasks) {
+      // Process subtasks to consolidate test tasks and ensure proper priorities
+      const processedSubtasks = processSubtasks(parsed.subtasks);
+
+      for (const subtask of processedSubtasks) {
         try {
           const newIssue = await bd.createIssue({
             title: subtask.title,
             description: subtask.description || "",
             type: subtask.type || "task",
+            priority: subtask.priority || "2", // Use processed priority or default
             parent: issue_id,
           }, project_path);
 
