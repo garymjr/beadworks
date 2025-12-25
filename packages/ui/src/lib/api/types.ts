@@ -256,3 +256,34 @@ export const STATUS_COLUMN_MAP: Record<string, string> = {
   in_progress: 'in-progress',
   closed: 'done',
 } as const
+
+// ============================================================================
+// Agent Pool Status Types
+// ============================================================================
+
+export type PlanningAgentStatus = 'active' | 'idle' | 'error'
+
+export interface PlanningAgentInfo {
+  status: PlanningAgentStatus
+  currentIssueId?: string
+  lastActivity: number
+}
+
+export interface WorkerInfo {
+  id: string
+  status: 'active' | 'idle' | 'error'
+  currentIssueId?: string
+  lastActivity: number
+}
+
+export interface WorkerPoolStatus {
+  totalWorkers: number
+  activeWorkers: number
+  idleWorkers: number
+  workers: Array<WorkerInfo>
+}
+
+export interface AgentPoolStatusResponse {
+  planningAgent: PlanningAgentInfo
+  workerPool: WorkerPoolStatus
+}

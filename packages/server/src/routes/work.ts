@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import { startWorkOnIssue, cancelWork, getWorkStatus, getAllActiveWork } from '../lib/agent-work-manager.js'
 import { workStore } from '../lib/work-store.js'
+import { getAgentPool } from '../lib/agent-pool.js'
 
 const workRoutes = new Hono()
 
@@ -307,7 +308,7 @@ workRoutes.get('/active', async (c) => {
  */
 workRoutes.post('/cancel/:issueId', async (c) => {
   const issueId = c.req.param('issueId')
-  
+
   try {
     const result = await cancelWork(issueId)
     return c.json(result)
@@ -315,6 +316,71 @@ workRoutes.post('/cancel/:issueId', async (c) => {
     return c.json({
       error: error.message,
     }, 400)
+  }
+})
+
+// ============================================================================
+// Agent Pool Status
+// ============================================================================
+
+/**
+ * GET /api/work/pool-status
+ * Get the status of the agent pool including planning agent and worker pool metrics
+ */
+workRoutes.get('/pool-status', async (c) => {
+  try {
+    const pool = getAgentPool()
+    const allAgents = pool.getAllAgents()
+    const stats = pool.getStats()
+
+    // Get planning agent info
+    const planningAgents = allAgents.filter(a => a.role === 'planning')
+    const planningAgent = planningAgents[0] // There should be exactly 1 planning agent
+
+    // Get worker pool info
+    const executionAgents = allAgents.filter(a => a.role === 'execution')
+
+    // Determine planning agent status
+    let planningStatus: 'active' | 'idle' | 'error' = 'idle'
+    let planningCurrentIssueId: string | undefined
+    let planningLastActivity = Date.now()
+
+    if (planningAgent) {
+      if (planningAgent.busy) {
+        planningStatus = 'active'
+        planningCurrentIssueId = planningAgent.currentWorkId
+      }
+      planningLastActivity = planningAgent.assignedAt || Date.now()
+    }
+
+    // Build worker info
+    const workers = executionAgents.map(agent => ({
+      id: agent.id,
+      status: agent.busy ? 'active' : 'idle' as const,
+      currentIssueId: agent.currentWorkId,
+      lastActivity: agent.assignedAt || Date.now(),
+    }))
+
+    const activeWorkers = workers.filter(w => w.status === 'active').length
+
+    return c.json({
+      planningAgent: {
+        status: planningStatus,
+        currentIssueId: planningCurrentIssueId,
+        lastActivity: planningLastActivity,
+      },
+      workerPool: {
+        totalWorkers: workers.length,
+        activeWorkers,
+        idleWorkers: workers.length - activeWorkers,
+        workers,
+      },
+    })
+  } catch (error: any) {
+    console.error('[PoolStatus] Error getting pool status:', error)
+    return c.json({
+      error: error.message || 'Failed to get pool status',
+    }, 500)
   }
 })
 

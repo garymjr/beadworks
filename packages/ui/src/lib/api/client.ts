@@ -7,6 +7,7 @@ import type {
   ActiveWorkSession,
   ActiveWorkSessionsResponse,
   WorkStatusResponse,
+  AgentPoolStatusResponse,
 } from './types'
 
 const API_BASE = process.env.BD_API_URL || 'http://localhost:3001/api/bd'
@@ -581,4 +582,11 @@ export async function cancelWork(issueId: string) {
   return fetchFromWorkAPI(`/cancel/${issueId}`, {
     method: 'POST',
   })
+}
+
+/**
+ * Get agent pool status including planning agent and worker pool metrics
+ */
+export async function getAgentPoolStatus(): Promise<AgentPoolStatusResponse> {
+  return fetchFromWorkAPI('/pool-status')
 }
