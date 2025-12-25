@@ -1,9 +1,9 @@
 // Project management types and utilities
 import {
-  getProjectsFromAPI,
   addProjectToAPI,
-  updateProjectInAPI,
+  getProjectsFromAPI,
   removeProjectFromAPI,
+  updateProjectInAPI,
 } from './api/client'
 
 export interface Project {

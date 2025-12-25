@@ -116,9 +116,8 @@ IMPLEMENTATION GUIDELINES
 1. Read and understand the existing codebase FIRST
 2. Focus ONLY on this specific subtask - do not try to do other subtasks
 3. Make ACTUAL changes to code files (use write/edit tools)
-4. Add or update tests as needed
-5. Run tests to verify your changes work
-6. Only consider it done when the code is written and tested
+4. Verify your changes work correctly
+5. Only consider it done when the code is written and working
 
 ═══════════════════════════════════════════════════════════════
 EXPECTED OUTPUT
@@ -127,7 +126,6 @@ EXPECTED OUTPUT
 When complete, provide a summary that MUST include:
 - What you implemented (specific changes made)
 - Files you modified or created (list file paths)
-- Any tests you added or updated
 - Any important notes
 
 IMPORTANT: Your work will be validated. If no files were modified, the subtask will NOT be marked complete.
@@ -192,10 +190,9 @@ IMPLEMENTATION GUIDELINES
 
 1. Read and understand existing code before making changes
 2. Write clean, well-documented code
-3. Add or update tests as needed
-4. Follow the project's existing patterns and conventions
-5. Consider edge cases and error handling
-6. Use appropriate tools (file_read, file_write, bash, etc.)
+3. Follow the project's existing patterns and conventions
+4. Consider edge cases and error handling
+5. Use appropriate tools (file_read, file_write, bash, etc.)
 
 WORKFLOW:
 ${subtasks && subtasks.length > 0 ? `
@@ -205,14 +202,14 @@ ${subtasks && subtasks.length > 0 ? `
    a. Read relevant files
    b. Plan your approach
    c. Implement the changes
-   d. Test your changes
+   d. Verify your changes work correctly
    e. Mark the subtask as complete (using bd close)
 4. After ALL subtasks are complete, summarize your work
 ` : `
 1. Start by reading relevant files to understand the codebase
 2. Plan your approach before making changes
 3. Implement the changes incrementally
-4. Test your changes
+4. Verify your changes work correctly
 5. Provide a summary of what was done
 `}
 
@@ -223,7 +220,6 @@ EXPECTED OUTPUT
 When you complete the work, provide a summary that includes:
 - What was implemented
 - Files that were modified or created
-- Any tests that were added or updated
 - Any important notes or considerations for the reviewer
 
 ${subtasks && subtasks.length > 0 ? `
@@ -252,12 +248,19 @@ IMPORTANT CONTEXT:
 - This is a REAL issue that needs to be IMPLEMENTED
 - Do NOT generate tasks about "planning" or "creating subtasks"
 - Generate ACTUAL implementation steps that a developer would execute
-- Each subtask should represent actual code to write, tests to write, or files to modify
+- Each subtask should represent actual code to write or files to modify
+
+TESTING GUIDELINES (IMPORTANT):
+- Tests are OPTIONAL - only create a test subtask if the issue specifically requires it
+- If tests are needed, create ONE test subtask MAXIMUM
+- The test subtask must be LAST in the subtask list
+- The test subtask must have the LOWEST priority (priority 3 or 4)
+- Do NOT create separate test subtasks for different components or scenarios
+- Focus implementation subtasks on actual feature code, not test code
 
 Break this down into 3-8 specific implementation steps. Think about:
 - What files need to be created or modified?
 - What functions or components need to be written?
-- What tests need to be added?
 - Are there any configuration changes needed?
 - Should there be a data migration or schema change?
 - What about error handling and edge cases?
@@ -270,10 +273,10 @@ Your JSON must have proper syntax:
 - No trailing commas
 
 IMPORTANT - AVOID COLONS IN STRING VALUES:
-When writing descriptions, AVOID patterns like "step 1):", "that":", etc. inside quoted strings.
+When writing descriptions, AVOID patterns like "step 1):", "that):", etc. inside quoted strings.
 These break JSON parsers. Instead use:
 - "step 1)" without colon after the parenthesis
-- "that does" instead of "that":"
+- "that does" instead of "that):"
 - Semicolons or dashes instead of colons for lists
 - Bullet points with • or -
 
@@ -291,14 +294,18 @@ These break JSON parsers. Instead use:
 
 EXAMPLE OF GOOD SUBTASKS:
 - "Create REST API endpoint for user registration" → "Add POST /api/users/register route in src/routes/users.ts. Implement input validation; password hashing with bcrypt; user creation. Return 201 with user object or 400 for validation errors."
-- "Add unit tests for payment processing" → "Create test file src/services/payment.test.ts. Add tests for successful payment, failed payment, and edge cases like insufficient funds. Use jest mock for Stripe API."
+- "Implement user profile component" → "Create UserProfile component in src/components/UserProfile.tsx. Fetch user data from API; display profile information; handle loading and error states."
+- "Add tests" (OPTIONAL - LAST subtask, lowest priority) → "Add basic tests for the implemented functionality. Use existing test patterns in the codebase."
 
 EXAMPLE OF BAD SUBTASKS (avoid these):
 - "Create subtasks for this issue"
 - "Plan the implementation approach"
 - "Research the best way to implement"
+- "Add unit tests for payment service" (too early, should be last)
+- "Add integration tests" (separate from unit tests - combine into one test task)
+- Multiple test subtasks for different components (consolidate into one)
 
-Remember: These are REAL implementation steps. Each subtask should be something a developer sits down and codes.
+Remember: These are REAL implementation steps. Each subtask should be something a developer sits down and codes. Focus on the feature implementation first; tests are optional and should be consolidated.
 
 IMPORTANT: Double-check your JSON syntax before responding. Ensure:
 1. Every property name has both opening and closing quotes

@@ -4,9 +4,9 @@
  */
 
 import type {
-  WorkStatusResponse,
   ActiveWorkSession,
   ActiveWorkSessionsResponse,
+  WorkStatusResponse,
 } from './types'
 
 const API_BASE = process.env.BD_API_URL || 'http://localhost:3001/api/bd'

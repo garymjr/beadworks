@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAgentEvents, type AgentWorkState } from '../hooks/useAgentEvents'
+import {  useAgentEvents } from '../hooks/useAgentEvents'
 import {
   checkProjectInitialized,
   cleanupClosedTasks,
@@ -21,6 +21,7 @@ import { WorkProgressModal } from '../components/WorkProgressModal'
 import { ActiveAgentIndicator } from '../components/ActiveAgentIndicator'
 import StatusBadge from '../components/StatusBadge'
 import { getCurrentProject } from '../lib/projects'
+import type {AgentWorkState} from '../hooks/useAgentEvents';
 import type { Task } from '../lib/api/types'
 import type { Project } from '../lib/projects'
 

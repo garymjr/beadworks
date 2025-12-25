@@ -113,7 +113,7 @@ export interface WorkStatusResponse {
   result?: {
     success: boolean
     summary: string
-    filesChanged: string[]
+    filesChanged: Array<string>
   }
 }
 
@@ -127,7 +127,7 @@ export interface ActiveWorkSession {
 }
 
 export interface ActiveWorkSessionsResponse {
-  sessions: ActiveWorkSession[]
+  sessions: Array<ActiveWorkSession>
   count: number
 }
 

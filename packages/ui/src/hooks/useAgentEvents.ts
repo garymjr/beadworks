@@ -8,9 +8,9 @@
  * - localStorage is NOT used for persistence (avoid stale data)
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react'
-import type { AgentEvent } from '../lib/api/types'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchWorkStatus } from '../lib/api/client'
+import type { AgentEvent } from '../lib/api/types'
 
 export interface AgentWorkState {
   status:
@@ -23,7 +23,7 @@ export interface AgentWorkState {
   progress: number
   currentStep: string
   totalSteps?: number
-  events: AgentEvent[]
+  events: Array<AgentEvent>
   isComplete: boolean
   isConnected: boolean
   isActive: boolean
@@ -35,7 +35,7 @@ export interface AgentWorkState {
   result?: {
     success: boolean
     summary: string
-    filesChanged: string[]
+    filesChanged: Array<string>
     duration: number
   }
 }
@@ -53,9 +53,10 @@ const initialState: AgentWorkState = {
 const MAX_RETRY_ATTEMPTS = 5
 const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000] // Exponential backoff
 
-export function useAgentEvents(issueId: string, enabled: boolean = true, initialStateOverride?: Partial<AgentWorkState>) {
-  // Use initial state from override if provided (for rehydration), otherwise use default
-  const [state, setState] = useState<AgentWorkState>(() => initialStateOverride ? { ...initialState, ...initialStateOverride } : initialState)
+export function useAgentEvents(issueId: string, enabled: boolean = true) {
+  // Server is the source of truth - always start with initial state
+  // The server will tell us the actual state via fetchWorkStatus + SSE events
+  const [state, setState] = useState<AgentWorkState>(initialState)
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -63,9 +64,7 @@ export function useAgentEvents(issueId: string, enabled: boolean = true, initial
   const retryCountRef = useRef(0)
   const lastEventTimeRef = useRef(Date.now())
   // Track current status for error handler (avoiding closure issues)
-  const currentStatusRef = useRef<AgentWorkState['status']>(initialStateOverride?.status || initialState.status)
-  // Track the initial override for reset
-  const initialStateOverrideRef = useRef(initialStateOverride)
+  const currentStatusRef = useRef<AgentWorkState['status']>(initialState.status)
 
   const connect = useCallback(() => {
     if (!enabled || !issueId) return
@@ -258,12 +257,16 @@ export function useAgentEvents(issueId: string, enabled: boolean = true, initial
         // Update ref
         currentStatusRef.current = status.status
       } else {
-        console.log('[useAgentEvents] No active session found on server')
-        // No active session - keep default initialState
+        console.log('[useAgentEvents] No active session found on server, resetting state')
+        // No active session - RESET to initial state (server is source of truth)
+        setState(initialState)
+        currentStatusRef.current = initialState.status
       }
     } catch (error) {
       console.error('[useAgentEvents] Failed to fetch server status:', error)
-      // Keep current state on error
+      // Reset to initial state on fetch error - server is unavailable
+      setState(initialState)
+      currentStatusRef.current = initialState.status
     }
   }, [issueId])
 
@@ -282,11 +285,9 @@ export function useAgentEvents(issueId: string, enabled: boolean = true, initial
 
   // Reset state when issueId changes
   useEffect(() => {
-    const resetState = initialStateOverrideRef.current
-      ? { ...initialState, ...initialStateOverrideRef.current }
-      : initialState
-    setState(resetState)
-    currentStatusRef.current = resetState.status
+    // Reset to initial state - server will tell us the real state
+    setState(initialState)
+    currentStatusRef.current = initialState.status
     setConnectionError(null)
     retryCountRef.current = 0
     // Fetch server status for new issueId

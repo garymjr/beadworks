@@ -4,8 +4,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import type { AgentWorkState } from '../hooks/useAgentEvents'
 import { cancelWork } from '../lib/api/client'
+import type { AgentWorkState } from '../hooks/useAgentEvents'
 
 interface WorkProgressCardProps {
   issueId: string

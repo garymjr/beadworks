@@ -20,14 +20,14 @@ class ActiveWorkStore {
   /**
    * Get all stored sessions
    */
-  getAll(): StoredActiveWork[] {
+  getAll(): Array<StoredActiveWork> {
     if (typeof window === 'undefined') return []
 
     try {
       const data = localStorage.getItem(this.STORAGE_KEY)
       if (!data) return []
 
-      const sessions: StoredActiveWork[] = JSON.parse(data)
+      const sessions: Array<StoredActiveWork> = JSON.parse(data)
       // Filter out sessions older than 24 hours
       const now = Date.now()
       return sessions.filter((s) => now - s.startedAt < this.SESSION_MAX_AGE)
