@@ -13,7 +13,7 @@ import {
   updateTaskStatus,
 } from '../lib/api/client'
 import { COLUMN_STATUS_MAP, STATUS_COLUMN_MAP } from '../lib/api/types'
-import { activeWorkStore } from '../lib/active-work-store'
+
 import { ProjectSelector } from '../components/ProjectSelector'
 import { AddProjectModal } from '../components/AddProjectModal'
 import { AddTaskModal } from '../components/AddTaskModal'
@@ -36,7 +36,6 @@ interface ActiveWorkSession {
   issueTitle: string
   startedAt: number
   projectPath: string
-  workState?: AgentWorkState // Persisted agent work state
 }
 
 // Bead colors for visual variety
@@ -115,7 +114,8 @@ function WorkProgressModalWrapper({
   session: ActiveWorkSession
   onClose: () => void
 }) {
-  const workState = useAgentEvents(session.issueId, true, session.workState)
+  // Server is now the source of truth - fetch status on mount
+  const workState = useAgentEvents(session.issueId, true)
 
   return (
     <WorkProgressModal
@@ -313,84 +313,47 @@ function BeadworksKanban() {
     [router],
   )
 
-  // Rehydrate active work sessions from localStorage on mount
-  // This ensures that running agent work is restored after page refresh
+  // Load active work sessions from server on mount
+  // The server is now the source of truth for active work state
   useEffect(() => {
-    async function rehydrateActiveWork() {
-      // 1. Load from localStorage
-      const storedSessions = activeWorkStore.getAll()
-
-      if (storedSessions.length === 0) {
-        console.log('[Rehydrate] No stored sessions found')
-        return
-      }
-
-      console.log(`[Rehydrate] Found ${storedSessions.length} stored sessions`)
-
-      // 2. Verify with server which sessions are still active
+    async function loadActiveWork() {
       try {
         const { sessions: serverSessions } = await getActiveWork()
-        const activeIssueIds = new Set(
-          (serverSessions as Array<{ issueId: string }>).map((s) => s.issueId),
-        )
 
-        console.log(
-          '[Rehydrate] Server reports active sessions:',
-          Array.from(activeIssueIds),
-        )
-
-        // 3. Restore sessions that are still active
-        const sessionsToRestore = storedSessions.filter((s) =>
-          activeIssueIds.has(s.issueId),
-        )
-
-        if (sessionsToRestore.length > 0) {
-          console.log(
-            `[Rehydrate] Restoring ${sessionsToRestore.length} sessions`,
-          )
-          setActiveWorkSessions(
-            new Map(sessionsToRestore.map((s) => [s.issueId, s])),
-          )
+        if (serverSessions.length === 0) {
+          console.log('[ActiveWork] No active sessions on server')
+          setActiveWorkSessions(new Map())
+          return
         }
 
-        // 4. Clean up stale entries from localStorage
-        const staleSessions = storedSessions.filter(
-          (s) => !activeIssueIds.has(s.issueId),
-        )
-        staleSessions.forEach((s) => activeWorkStore.remove(s.issueId))
-        if (staleSessions.length > 0) {
-          console.log(
-            `[Rehydrate] Cleaned up ${staleSessions.length} stale sessions`,
-          )
+        console.log(`[ActiveWork] Found ${serverSessions.length} active sessions on server`)
+
+        // Create session objects from server data
+        // Note: We need to fetch issue titles since server doesn't provide them
+        const sessionMap = new Map<string, ActiveWorkSession>()
+        const tasks = columns.flatMap((col) => col.tasks)
+
+        for (const serverSession of serverSessions) {
+          const task = tasks.find((t) => t.id === serverSession.issueId)
+          sessionMap.set(serverSession.issueId, {
+            issueId: serverSession.issueId,
+            issueTitle: task?.title || 'Unknown Issue',
+            startedAt: serverSession.startTime,
+            projectPath: currentProject?.path || '',
+          })
         }
+
+        setActiveWorkSessions(sessionMap)
       } catch (error) {
-        console.error(
-          '[Rehydrate] Failed to verify sessions with server:',
-          error,
-        )
-        // On error, clean up all stored sessions to avoid confusion
-        activeWorkStore.clear()
+        console.error('[ActiveWork] Failed to load active sessions from server:', error)
+        setActiveWorkSessions(new Map())
       }
     }
 
-    rehydrateActiveWork()
+    loadActiveWork()
     // Only run on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Sync active work sessions to localStorage whenever they change
-  useEffect(() => {
-    const sessions = Array.from(activeWorkSessions.values())
-    if (sessions.length === 0) {
-      // If no sessions, clear localStorage
-      activeWorkStore.clear()
-      return
-    }
-
-    // Sync all active sessions to localStorage
-    activeWorkStore.clear()
-    sessions.forEach((s) => activeWorkStore.add(s))
-  }, [activeWorkSessions])
 
   const handleDragStart = (task: Task) => {
     isDraggingRef.current = true
@@ -1292,7 +1255,6 @@ function BeadworksKanban() {
                                         issueId={task.id}
                                         compact={false}
                                         onClick={() => setModalSessionId(task.id)}
-                                        initialStateOverride={session?.workState}
                                       />
                                     </div>
                                   )

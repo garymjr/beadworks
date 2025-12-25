@@ -11,16 +11,15 @@ interface ActiveAgentIndicatorProps {
   issueId: string
   compact?: boolean // If true, shows minimal indicator (dot + status only)
   onClick?: () => void // Optional click handler to open modal
-  initialStateOverride?: Partial<AgentWorkState> // Initial state for rehydration
 }
 
 export function ActiveAgentIndicator({
   issueId,
   compact = false,
   onClick,
-  initialStateOverride,
 }: ActiveAgentIndicatorProps) {
-  const workState = useAgentEvents(issueId, true, initialStateOverride)
+  // Server is the source of truth - fetch status on mount and reconnection
+  const workState = useAgentEvents(issueId, true)
 
   // Don't render if no active work
   if (!workState.isActive || workState.isComplete) {
