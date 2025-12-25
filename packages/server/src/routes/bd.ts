@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import * as bd from "../lib/bd-cli.js";
+import JSON5 from "json5";
 
 /**
  * Clean and fix common JSON syntax errors in AI responses
@@ -10,6 +11,18 @@ import * as bd from "../lib/bd-cli.js";
 function cleanJsonString(jsonStr: string): string {
   let cleaned = jsonStr;
 
+  // Remove server log markers that may have been embedded in AI responses
+  cleaned = cleaned.replace(/\[SERVER\]/g, '');
+  cleaned = cleaned.replace(/^\[SERVER\]\s*/gm, '');
+  cleaned = cleaned.replace(/\s*\[SERVER\]\s*/g, ' ');
+
+  // Remove any control characters that might break JSON (except newline/tab which are OK in JSON whitespace)
+  cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+  // Fix smart/curly quotes to regular straight quotes
+  cleaned = cleaned.replace(/[\u201C\u201D]/g, '"');  // Left/right double quotes
+  cleaned = cleaned.replace(/[\u2018\u2019]/g, "'");  // Left/right single quotes
+
   // Fix unquoted property names: title: → "title":
   // Only match after { or , to avoid matching inside strings
   cleaned = cleaned.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/g, '$1"$2"$3');
@@ -17,7 +30,71 @@ function cleanJsonString(jsonStr: string): string {
   // Remove trailing commas before closing brackets/braces
   cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
 
+  // Fix single-quoted values to double-quoted
+  cleaned = cleaned.replace(/:\s*'([^']*?)'/g, ': "$1"');
+
+  // Attempt to fix unescaped quotes in string values
+  // Pattern: looks for "text": "value with "quote" inside"
+  // We'll escape quotes that appear to be inside string values
+  // This regex finds: "value" followed by non-whitespace and non-closing chars, then "
+  cleaned = cleaned.replace(/:"([^"]*)"([^{,}\]]*)"([,}\]])/g, (match, prefix, middle, suffix) => {
+    // Escape any quotes in the middle part
+    const escapedMiddle = middle.replace(/"/g, '\\"');
+    return `:"${prefix}${escapedMiddle}"${suffix}`;
+  });
+
   return cleaned;
+}
+
+/**
+ * Extract a valid JSON object from a string that may contain extra text
+ * Uses brace matching to find the complete outermost object
+ */
+function extractJsonObject(str: string): string | null {
+  const startIndex = str.indexOf('{');
+  if (startIndex === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  let endIndex = -1;
+
+  for (let i = startIndex; i < str.length; i++) {
+    const char = str[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === '{') {
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          endIndex = i;
+          break;
+        }
+      }
+    }
+  }
+
+  if (endIndex > startIndex) {
+    return str.slice(startIndex, endIndex + 1);
+  }
+
+  return null;
 }
 
 const bdRoutes = new Hono();
@@ -577,53 +654,71 @@ bdRoutes.post("/generate-plan", zValidator("json", generatePlanSchema), async (c
     }
 
     // Create a prompt to generate a plan with subtasks
-    const prompt = `You are a senior software engineer and technical lead. Your job is to break down the following issue into concrete implementation steps.
+    const prompt = `<INSTRUCTIONS>
+You are a senior software engineer and technical lead. Your job is to break down the following issue into concrete implementation steps.
+</INSTRUCTIONS>
 
-THE ISSUE TO IMPLEMENT:
-Title: ${issueTitle}
-Description: ${issueDescription || "No description"}
-Type: ${issueType}
-Labels: ${issueLabels.join(", ") || "none"}
-
-IMPORTANT CONTEXT:
-- This is a REAL issue that needs to be IMPLEMENTED
-- Do NOT generate tasks about "planning" or "creating subtasks"
-- Generate ACTUAL implementation steps that a developer would execute
-- Each subtask should represent actual code to write, tests to write, or files to modify
-
-Break this down into 3-8 specific implementation steps. Think about:
+<TASK>
+Break down this issue into 3-8 specific implementation steps. Think about:
 - What files need to be created or modified?
 - What functions or components need to be written?
 - What tests need to be added?
 - Are there any configuration changes needed?
 - Should there be a data migration or schema change?
 - What about error handling and edge cases?
+</TASK>
 
-Respond with a JSON object in the following format (no markdown, no explanation):
+<ISSUE>
+Title: ${issueTitle}
+Description: ${issueDescription || "No description"}
+Type: ${issueType}
+Labels: ${issueLabels.join(", ") || "none"}
+</ISSUE>
+
+<CONSTRAINTS>
+- This is a REAL issue that needs to be IMPLEMENTED
+- Do NOT generate meta-tasks like "create subtasks" or "plan implementation"
+- Generate ACTUAL implementation steps that a developer would execute
+- Each subtask should represent actual code to write, tests to write, or files to modify
+- Avoid using single quotes in descriptions - use double quotes or rephrase
+- Keep all descriptions on one logical line (no embedded newlines)
+- Do not use markdown code blocks within JSON strings
+</CONSTRAINTS>
+
+<EXAMPLES>
+GOOD subtask title: "Create REST API endpoint for user registration"
+GOOD subtask description: "Add POST /api/users/register route in src/routes/users.ts. Implement input validation, password hashing with bcrypt, and user creation. Return 201 with user object or 400 for validation errors."
+
+GOOD subtask title: "Add unit tests for payment processing"
+GOOD subtask description: "Create test file src/services/payment.test.ts. Add tests for successful payment, failed payment, and edge cases like insufficient funds. Use jest mock for Stripe API."
+
+BAD subtask titles: "Create subtasks for this issue", "Plan the implementation approach", "Research the best way to implement"
+</EXAMPLES>
+
+<OUTPUT_FORMAT>
+Respond ONLY with valid JSON. No markdown. No explanation. No preamble.
+Use this exact structure:
+
 {
-  "plan": "Brief technical approach (2-3 sentences explaining the overall strategy)",
+  "plan": "Brief technical strategy in 2-3 sentences. Avoid special characters.",
   "subtasks": [
     {
-      "title": "Implementation step title (e.g., 'Create user authentication API endpoint' or 'Add error handling to payment processor')",
-      "description": "Specific technical details - what files to modify, what functions to create, etc.",
-      "type": "task|bug|chore"
+      "title": "Action-oriented title starting with a verb",
+      "description": "Specific technical details with file paths and implementation notes. Use double quotes for paths, not single quotes. Avoid embedded newlines.",
+      "type": "task"
     }
   ],
-  "risks": ["Potential technical risks, edge cases to consider, or things that might go wrong"]
+  "risks": ["Risk 1", "Risk 2", "Risk 3"]
 }
 
-EXAMPLE OF GOOD SUBTASKS:
-- "Create REST API endpoint for user registration" → "Add POST /api/users/register route in src/routes/users.ts. Implement input validation, password hashing with bcrypt, and user creation. Return 201 with user object or 400 for validation errors."
-- "Add unit tests for payment processing" → "Create test file src/services/payment.test.ts. Add tests for successful payment, failed payment, and edge cases like insufficient funds. Use jest mock for Stripe API."
-
-EXAMPLE OF BAD SUBTASKS (avoid these):
-- "Create subtasks for this issue"
-- "Plan the implementation approach"
-- "Research the best way to implement"
-
-Remember: These are REAL implementation steps. Each subtask should be something a developer sits down and codes.
-
-Respond ONLY with the JSON object, nothing else.`;
+CRITICAL JSON REQUIREMENTS:
+- All string values must use double quotes, never single quotes
+- Escape any double quotes inside strings with backslash: \\"
+- Do not include markdown formatting (no \`code blocks\`)
+- Do not use smart quotes (curly quotes)
+- Ensure all brackets, braces, and quotes are balanced
+- End with a closing brace }
+</OUTPUT_FORMAT>`;
 
     // Subscribe to capture the response
     let fullResponse = "";
@@ -674,60 +769,36 @@ Respond ONLY with the JSON object, nothing else.`;
         cleaned = cleaned.slice(0, closingMatch.index);
       }
 
-      // Extract JSON object using a more robust method
-      // Find a complete JSON object (with balanced braces) in the response
-      const jsonMatch = cleaned.match(/\{[\s\S]*\n\}/);
-      if (jsonMatch) {
-        cleaned = jsonMatch[0];
-      } else {
-        // Fallback: find first { and matching }
-        const startIndex = cleaned.indexOf('{');
-        if (startIndex >= 0) {
-          let depth = 0;
-          let inString = false;
-          let escapeNext = false;
-          let endIndex = -1;
+      cleaned = cleaned.trim();
 
-          for (let i = startIndex; i < cleaned.length; i++) {
-            const char = cleaned[i];
+      // Apply JSON cleaning BEFORE extraction to remove server log markers
+      cleaned = cleanJsonString(cleaned);
 
-            if (escapeNext) {
-              escapeNext = false;
-              continue;
-            }
-
-            if (char === '\\') {
-              escapeNext = true;
-              continue;
-            }
-
-            if (char === '"') {
-              inString = !inString;
-              continue;
-            }
-
-            if (!inString) {
-              if (char === '{') depth++;
-              else if (char === '}') {
-                depth--;
-                if (depth === 0) {
-                  endIndex = i;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (endIndex > startIndex) {
-            cleaned = cleaned.slice(startIndex, endIndex + 1);
-          }
-        }
+      // Extract JSON object using the helper function
+      const extracted = extractJsonObject(cleaned);
+      if (extracted) {
+        cleaned = extracted;
       }
 
       cleaned = cleaned.trim();
 
-      parsed = JSON.parse(cleaned);
-    } catch (parseError) {
+      // Apply JSON cleaning again AFTER extraction for any remaining syntax fixes
+      cleaned = cleanJsonString(cleaned);
+
+      // Try strict JSON parsing first
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (strictError: any) {
+        // If strict parsing fails, try JSON5 which is more lenient
+        console.warn("Strict JSON parsing failed, trying JSON5:", strictError?.message || strictError);
+        try {
+          parsed = JSON5.parse(cleaned);
+        } catch (json5Error: any) {
+          // Both failed, throw the original error with context
+          throw new Error(`JSON parse failed: ${strictError?.message || strictError}. JSON5 also failed: ${json5Error?.message || json5Error}`);
+        }
+      }
+    } catch (parseError: any) {
       console.error("Failed to parse AI response:", parseError);
       console.error("Response content:", fullResponse);
       return c.json({ error: "Failed to generate plan - AI response could not be parsed" }, 500);
@@ -833,53 +904,71 @@ bdRoutes.post("/generate-and-start", zValidator("json", generateAndStartSchema),
     }
 
     // Create a prompt to generate a plan with subtasks
-    const prompt = `You are a senior software engineer and technical lead. Your job is to break down the following issue into concrete implementation steps.
+    const prompt = `<INSTRUCTIONS>
+You are a senior software engineer and technical lead. Your job is to break down the following issue into concrete implementation steps.
+</INSTRUCTIONS>
 
-THE ISSUE TO IMPLEMENT:
-Title: ${issueTitle}
-Description: ${issueDescription || "No description"}
-Type: ${issueType}
-Labels: ${issueLabels.join(", ") || "none"}
-
-IMPORTANT CONTEXT:
-- This is a REAL issue that needs to be IMPLEMENTED
-- Do NOT generate tasks about "planning" or "creating subtasks"
-- Generate ACTUAL implementation steps that a developer would execute
-- Each subtask should represent actual code to write, tests to write, or files to modify
-
-Break this down into 3-8 specific implementation steps. Think about:
+<TASK>
+Break down this issue into 3-8 specific implementation steps. Think about:
 - What files need to be created or modified?
 - What functions or components need to be written?
 - What tests need to be added?
 - Are there any configuration changes needed?
 - Should there be a data migration or schema change?
 - What about error handling and edge cases?
+</TASK>
 
-Respond with a JSON object in the following format (no markdown, no explanation):
+<ISSUE>
+Title: ${issueTitle}
+Description: ${issueDescription || "No description"}
+Type: ${issueType}
+Labels: ${issueLabels.join(", ") || "none"}
+</ISSUE>
+
+<CONSTRAINTS>
+- This is a REAL issue that needs to be IMPLEMENTED
+- Do NOT generate meta-tasks like "create subtasks" or "plan implementation"
+- Generate ACTUAL implementation steps that a developer would execute
+- Each subtask should represent actual code to write, tests to write, or files to modify
+- Avoid using single quotes in descriptions - use double quotes or rephrase
+- Keep all descriptions on one logical line (no embedded newlines)
+- Do not use markdown code blocks within JSON strings
+</CONSTRAINTS>
+
+<EXAMPLES>
+GOOD subtask title: "Create REST API endpoint for user registration"
+GOOD subtask description: "Add POST /api/users/register route in src/routes/users.ts. Implement input validation, password hashing with bcrypt, and user creation. Return 201 with user object or 400 for validation errors."
+
+GOOD subtask title: "Add unit tests for payment processing"
+GOOD subtask description: "Create test file src/services/payment.test.ts. Add tests for successful payment, failed payment, and edge cases like insufficient funds. Use jest mock for Stripe API."
+
+BAD subtask titles: "Create subtasks for this issue", "Plan the implementation approach", "Research the best way to implement"
+</EXAMPLES>
+
+<OUTPUT_FORMAT>
+Respond ONLY with valid JSON. No markdown. No explanation. No preamble.
+Use this exact structure:
+
 {
-  "plan": "Brief technical approach (2-3 sentences explaining the overall strategy)",
+  "plan": "Brief technical strategy in 2-3 sentences. Avoid special characters.",
   "subtasks": [
     {
-      "title": "Implementation step title (e.g., 'Create user authentication API endpoint' or 'Add error handling to payment processor')",
-      "description": "Specific technical details - what files to modify, what functions to create, etc.",
-      "type": "task|bug|chore"
+      "title": "Action-oriented title starting with a verb",
+      "description": "Specific technical details with file paths and implementation notes. Use double quotes for paths, not single quotes. Avoid embedded newlines.",
+      "type": "task"
     }
   ],
-  "risks": ["Potential technical risks, edge cases to consider, or things that might go wrong"]
+  "risks": ["Risk 1", "Risk 2", "Risk 3"]
 }
 
-EXAMPLE OF GOOD SUBTASKS:
-- "Create REST API endpoint for user registration" → "Add POST /api/users/register route in src/routes/users.ts. Implement input validation, password hashing with bcrypt, and user creation. Return 201 with user object or 400 for validation errors."
-- "Add unit tests for payment processing" → "Create test file src/services/payment.test.ts. Add tests for successful payment, failed payment, and edge cases like insufficient funds. Use jest mock for Stripe API."
-
-EXAMPLE OF BAD SUBTASKS (avoid these):
-- "Create subtasks for this issue"
-- "Plan the implementation approach"
-- "Research the best way to implement"
-
-Remember: These are REAL implementation steps. Each subtask should be something a developer sits down and codes.
-
-Respond ONLY with the JSON object, nothing else.`;
+CRITICAL JSON REQUIREMENTS:
+- All string values must use double quotes, never single quotes
+- Escape any double quotes inside strings with backslash: \\"
+- Do not include markdown formatting (no \`code blocks\`)
+- Do not use smart quotes (curly quotes)
+- Ensure all brackets, braces, and quotes are balanced
+- End with a closing brace }
+</OUTPUT_FORMAT>`;
 
     // Subscribe to capture the response
     let fullResponse = "";
@@ -920,72 +1009,46 @@ Respond ONLY with the JSON object, nothing else.`;
       cleaned = fullResponse.trim();
 
       // Remove markdown code blocks
-      const openingMatch = cleaned.match(/```\\w*\\s*\\r?\\n/);
+      const openingMatch = cleaned.match(/```\w*\s*\r?\n/);
       if (openingMatch) {
         cleaned = cleaned.slice(openingMatch[0].length);
       }
 
-      const closingMatch = cleaned.match(/```\\s*$/);
+      const closingMatch = cleaned.match(/```\s*$/);
       if (closingMatch) {
         cleaned = cleaned.slice(0, closingMatch.index);
       }
 
-      // Extract JSON object using a more robust method
-      const jsonMatch = cleaned.match(/\\{[\\s\\S]*\\n\\}/);
-      if (jsonMatch) {
-        cleaned = jsonMatch[0];
-      } else {
-        // Fallback: find first { and matching }
-        const startIndex = cleaned.indexOf('{');
-        if (startIndex >= 0) {
-          let depth = 0;
-          let inString = false;
-          let escapeNext = false;
-          let endIndex = -1;
+      cleaned = cleaned.trim();
 
-          for (let i = startIndex; i < cleaned.length; i++) {
-            const char = cleaned[i];
+      // Apply JSON cleaning BEFORE extraction to remove server log markers
+      cleaned = cleanJsonString(cleaned);
 
-            if (escapeNext) {
-              escapeNext = false;
-              continue;
-            }
-
-            if (char === '\\\\') {
-              escapeNext = true;
-              continue;
-            }
-
-            if (char === '"') {
-              inString = !inString;
-              continue;
-            }
-
-            if (!inString) {
-              if (char === '{') depth++;
-              else if (char === '}') {
-                depth--;
-                if (depth === 0) {
-                  endIndex = i;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (endIndex > startIndex) {
-            cleaned = cleaned.slice(startIndex, endIndex + 1);
-          }
-        }
+      // Extract JSON object using the helper function
+      const extracted = extractJsonObject(cleaned);
+      if (extracted) {
+        cleaned = extracted;
       }
 
       cleaned = cleaned.trim();
 
-      // Apply JSON cleaning to fix common syntax errors
+      // Apply JSON cleaning again AFTER extraction for any remaining syntax fixes
       cleaned = cleanJsonString(cleaned);
 
-      parsed = JSON.parse(cleaned);
-    } catch (parseError) {
+      // Try strict JSON parsing first
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (strictError: any) {
+        // If strict parsing fails, try JSON5 which is more lenient
+        console.warn("Strict JSON parsing failed, trying JSON5:", strictError?.message || strictError);
+        try {
+          parsed = JSON5.parse(cleaned);
+        } catch (json5Error: any) {
+          // Both failed, throw the original error with context
+          throw new Error(`JSON parse failed: ${strictError?.message || strictError}. JSON5 also failed: ${json5Error?.message || json5Error}`);
+        }
+      }
+    } catch (parseError: any) {
       console.error("Failed to parse AI response:", parseError);
       console.error("Response content:", fullResponse);
       console.error("Cleaned content:", cleaned);
@@ -1146,59 +1209,34 @@ Respond ONLY with the JSON object, nothing else.`;
         cleaned = cleaned.slice(0, closingMatch.index);
       }
 
-      // Extract JSON object using a more robust method
-      // Find a complete JSON object (with balanced braces) in the response
-      const jsonMatch = cleaned.match(/\{[\s\S]*\n\}/);
-      if (jsonMatch) {
-        cleaned = jsonMatch[0];
-      } else {
-        // Fallback: find first { and matching }
-        const startIndex = cleaned.indexOf('{');
-        if (startIndex >= 0) {
-          let depth = 0;
-          let inString = false;
-          let escapeNext = false;
-          let endIndex = -1;
+      cleaned = cleaned.trim();
 
-          for (let i = startIndex; i < cleaned.length; i++) {
-            const char = cleaned[i];
+      // Apply JSON cleaning BEFORE extraction to remove server log markers
+      cleaned = cleanJsonString(cleaned);
 
-            if (escapeNext) {
-              escapeNext = false;
-              continue;
-            }
-
-            if (char === '\\') {
-              escapeNext = true;
-              continue;
-            }
-
-            if (char === '"') {
-              inString = !inString;
-              continue;
-            }
-
-            if (!inString) {
-              if (char === '{') depth++;
-              else if (char === '}') {
-                depth--;
-                if (depth === 0) {
-                  endIndex = i;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (endIndex > startIndex) {
-            cleaned = cleaned.slice(startIndex, endIndex + 1);
-          }
-        }
+      // Extract JSON object using the helper function
+      const extracted = extractJsonObject(cleaned);
+      if (extracted) {
+        cleaned = extracted;
       }
 
       cleaned = cleaned.trim();
 
-      parsed = JSON.parse(cleaned);
+      // Apply JSON cleaning again AFTER extraction for any remaining syntax fixes
+      cleaned = cleanJsonString(cleaned);
+
+      // Try strict JSON parsing first
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (strictError) {
+        // If strict parsing fails, try JSON5 which is more lenient
+        try {
+          parsed = JSON5.parse(cleaned);
+        } catch (json5Error) {
+          // Both failed, use fallback
+          throw strictError;
+        }
+      }
     } catch (parseError) {
       console.error("Failed to parse AI response:", parseError);
       console.error("Response content:", fullResponse);
