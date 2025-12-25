@@ -7,6 +7,7 @@ import { cwdRoutes } from "./routes/cwd.js";
 import { workRoutes } from "./routes/work.js";
 import { projectsRoutes } from "./routes/projects.js";
 import { initializePiAgent } from "./lib/pi-agent.js";
+import { initializeAgentPool } from "./lib/agent-pool.js";
 
 const app = new Hono();
 
@@ -58,6 +59,10 @@ app.onError((err, c) => {
 
 // Initialize pi-mono agent
 await initializePiAgent();
+
+// Initialize agent pool
+await initializeAgentPool();
+console.log('✅ Agent pool initialized');
 
 // Start server
 const port = process.env.PORT || 3001;

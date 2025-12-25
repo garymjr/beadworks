@@ -35,13 +35,8 @@ export async function initializePiAgent() {
 
       // Forward relevant events to the event system
       // The work store will filter by issueId/workId as needed
-      if (event.type === "message_update") {
-        const msgEvent = event.assistantMessageEvent;
-        if (msgEvent && msgEvent.type === "text_delta") {
-          // Text deltas are streamed - could be logged or displayed
-          process.stdout.write(msgEvent.delta);
-        }
-      } else if (event.type === "tool_execution_start") {
+      // Skip message_update events to reduce log noise
+      if (event.type === "tool_execution_start") {
         console.log(`[Pi-Agent] Tool call: ${event.toolName || "unknown"}`);
       } else if (event.type === "tool_execution_end") {
         if (event.error) {
