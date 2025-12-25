@@ -1,9 +1,16 @@
 /**
  * React hook for connecting to the SSE endpoint and receiving agent work progress
+ *
+ * Architecture: Server as source of truth
+ * - SSE events provide real-time updates
+ * - State is persisted on the server, not locally
+ * - On mount/reconnection, fetch state from server via API
+ * - localStorage is NOT used for persistence (avoid stale data)
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { AgentEvent } from '../lib/api/types'
+import { fetchWorkStatus } from '../lib/api/client'
 
 export interface AgentWorkState {
   status:
@@ -95,13 +102,15 @@ export function useAgentEvents(issueId: string, enabled: boolean = true, initial
     const eventSource = new EventSource(url.toString())
     eventSourceRef.current = eventSource
 
-    eventSource.onopen = () => {
+    eventSource.onopen = async () => {
       console.log('[useAgentEvents] Connected')
       setIsConnected(true)
       setConnectionError(null)
       retryCountRef.current = 0 // Reset retry count on successful connection
       lastEventTimeRef.current = Date.now()
       setState((prev) => ({ ...prev, isConnected: true, isActive: true }))
+      // Fetch server status after connection to rehydrate state
+      await fetchServerStatus()
     }
 
     eventSource.onmessage = (event) => {
@@ -216,6 +225,48 @@ export function useAgentEvents(issueId: string, enabled: boolean = true, initial
     }
   }, [issueId, enabled])
 
+  // Fetch work status from server for rehydration
+  const fetchServerStatus = useCallback(async () => {
+    if (!issueId) return
+
+    try {
+      console.log('[useAgentEvents] Fetching server status for', issueId)
+      const status = await fetchWorkStatus(issueId)
+
+      if (status) {
+        console.log('[useAgentEvents] Server status found:', status.status, status.progress)
+        // Map server response to AgentWorkState
+        setState((prev) => ({
+          ...prev,
+          status: status.status,
+          progress: status.progress,
+          currentStep: status.currentStep,
+          totalSteps: status.totalSteps,
+          error: status.error,
+          result: status.result ? {
+            success: status.result.success,
+            summary: status.result.summary,
+            filesChanged: status.result.filesChanged,
+            duration: status.endTime ? status.endTime - status.startTime : 0,
+          } : prev.result,
+          // Clear events array - will be populated by SSE
+          events: [],
+          // Update computed properties
+          isComplete: ['complete', 'error', 'cancelled'].includes(status.status),
+          isActive: ['starting', 'thinking', 'working'].includes(status.status),
+        }))
+        // Update ref
+        currentStatusRef.current = status.status
+      } else {
+        console.log('[useAgentEvents] No active session found on server')
+        // No active session - keep default initialState
+      }
+    } catch (error) {
+      console.error('[useAgentEvents] Failed to fetch server status:', error)
+      // Keep current state on error
+    }
+  }, [issueId])
+
   const disconnect = useCallback(() => {
     if (eventSourceRef.current) {
       console.log('[useAgentEvents] Disconnecting')
@@ -238,7 +289,16 @@ export function useAgentEvents(issueId: string, enabled: boolean = true, initial
     currentStatusRef.current = resetState.status
     setConnectionError(null)
     retryCountRef.current = 0
-  }, [issueId])
+    // Fetch server status for new issueId
+    fetchServerStatus()
+  }, [issueId, fetchServerStatus])
+
+  // Fetch initial status on mount
+  useEffect(() => {
+    if (enabled && issueId) {
+      fetchServerStatus()
+    }
+  }, [enabled, issueId, fetchServerStatus])
 
   // Connect/disconnect based on enabled state
   useEffect(() => {
@@ -260,6 +320,7 @@ export function useAgentEvents(issueId: string, enabled: boolean = true, initial
     // Small delay before reconnecting
     setTimeout(() => {
       connect()
+      // fetchServerStatus will be called in onopen handler
     }, 100)
   }, [connect, disconnect])
 
@@ -289,29 +350,7 @@ export function useAgentEvents(issueId: string, enabled: boolean = true, initial
     return () => clearInterval(checkInterval)
   }, [isConnected, reconnect])
 
-  // Persist work state to localStorage whenever it changes
-  // This allows rehydration after page refresh
-  useEffect(() => {
-    if (!issueId || typeof window === 'undefined') return
 
-    try {
-      // Read existing sessions
-      const STORAGE_KEY = 'beadworks_active_work'
-      const data = localStorage.getItem(STORAGE_KEY)
-      const sessions = data ? JSON.parse(data) : []
-
-      // Find and update the session for this issue
-      const sessionIndex = sessions.findIndex((s: any) => s.issueId === issueId)
-      if (sessionIndex !== -1) {
-        // Update the work state for this session
-        sessions[sessionIndex].workState = state
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
-        console.log('[useAgentEvents] Persisted work state for', issueId)
-      }
-    } catch (error) {
-      console.error('[useAgentEvents] Failed to persist work state:', error)
-    }
-  }, [state, issueId])
 
   return {
     ...state,
