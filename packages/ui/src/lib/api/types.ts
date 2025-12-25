@@ -93,6 +93,45 @@ export interface CompleteEventData {
 }
 
 // ============================================================================
+// Work Session Types
+// ============================================================================
+
+export interface WorkStatusResponse {
+  workId: string
+  issueId: string
+  status: 'starting' | 'thinking' | 'working' | 'complete' | 'error' | 'cancelled'
+  progress: number
+  currentStep: string
+  totalSteps?: number
+  startTime: number
+  endTime?: number
+  error?: {
+    message: string
+    recoverable: boolean
+    canRetry: boolean
+  }
+  result?: {
+    success: boolean
+    summary: string
+    filesChanged: string[]
+  }
+}
+
+export interface ActiveWorkSession {
+  workId: string
+  issueId: string
+  status: 'starting' | 'thinking' | 'working' | 'complete' | 'error' | 'cancelled'
+  progress: number
+  currentStep: string
+  startTime: number
+}
+
+export interface ActiveWorkSessionsResponse {
+  sessions: ActiveWorkSession[]
+  count: number
+}
+
+// ============================================================================
 // Task Types
 // ============================================================================
 

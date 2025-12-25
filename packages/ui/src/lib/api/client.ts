@@ -3,6 +3,12 @@
  * These run in the browser and make HTTP requests to the backend server
  */
 
+import type {
+  WorkStatusResponse,
+  ActiveWorkSession,
+  ActiveWorkSessionsResponse,
+} from './types'
+
 const API_BASE = process.env.BD_API_URL || 'http://localhost:3001/api/bd'
 const WORK_API_BASE =
   process.env.WORK_API_URL || 'http://localhost:3001/api/work'
@@ -517,9 +523,34 @@ export async function startWork(input: {
 
 /**
  * Get the status of work on an issue
+ * Returns WorkStatusResponse or null if not found
+ */
+export async function fetchWorkStatus(
+  issueId: string
+): Promise<WorkStatusResponse | null> {
+  const url = new URL(`${WORK_API_BASE}/status/${issueId}`, window.location.origin)
+
+  const response = await fetch(url.toString(), {
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null
+    }
+    const error = await response.json().catch(() => ({ message: response.statusText }))
+    throw new Error(error.message || error.error || 'Failed to fetch work status')
+  }
+
+  return response.json()
+}
+
+/**
+ * Get the status of work on an issue (legacy alias)
+ * @deprecated Use fetchWorkStatus instead for better null handling
  */
 export async function getWorkStatus(issueId: string) {
-  return fetchFromWorkAPI(`/status/${issueId}`)
+  return fetchWorkStatus(issueId)
 }
 
 /**
@@ -532,14 +563,14 @@ export async function getWorkSession(workId: string) {
 /**
  * Get all active work sessions
  */
-export async function getActiveWorkSessions() {
+export async function getActiveWorkSessions(): Promise<ActiveWorkSessionsResponse> {
   return fetchFromWorkAPI('/active')
 }
 
 /**
  * Get all active work sessions (alias for consistency with naming)
  */
-export async function getActiveWork() {
+export async function getActiveWork(): Promise<ActiveWorkSessionsResponse> {
   return fetchFromWorkAPI('/active')
 }
 
